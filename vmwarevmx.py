@@ -596,7 +596,7 @@ class VMwareVMX(object):
 
         # Encrypt the configuration and add AES IV and hash
         cipher = AES.new(self.aes_key2, self.__AES_MODE, self.aes_iv2)
-        config_enc = self.aes_iv2 + cipher.encrypt(config_dec) + config_hash
+        config_enc = self.aes_iv2 + cipher.encrypt(config_dec.encode()) + config_hash
         del cipher
 
         # Encode the configuration
@@ -639,7 +639,7 @@ class VMwareVMX(object):
 
         # Encrypt the dictionary and add AES IV and hash
         cipher = AES.new(dict_key, self.__AES_MODE, self.aes_iv1)
-        dict_enc = self.aes_iv1 + cipher.encrypt(dict_dec) + dict_hash
+        dict_enc = self.aes_iv1 + cipher.encrypt(dict_dec.encode()) + dict_hash
         del cipher
 
         # Encode the configuration
