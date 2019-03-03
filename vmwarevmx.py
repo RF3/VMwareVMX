@@ -187,7 +187,7 @@ class VMwareVMX(object):
         from the dictionary.
 
         If the value is None, the second AES IV will be created with random
-        data on encryption. If the size isn't right, an exception of type 
+        data on encryption. If the size isn't right, an exception of type
         ValueError will be the result. If it's not of type bytes, an
         exception of type TypeError will be the result.
     """
@@ -205,7 +205,7 @@ class VMwareVMX(object):
         together with the second AES IV.
 
         If the value is None, the second AES Key will be created with random
-        data on encryption. If the size isn't right, an exception of type 
+        data on encryption. If the size isn't right, an exception of type
         ValueError will be the result. If it's not of type bytes, an
         exception of type TypeError will be the result.
     """
@@ -246,7 +246,7 @@ class VMwareVMX(object):
         self.aes_key2 = source.aes_key2
         return self
 
-    def decrypt(self, password_s, keysafe_s, data_s):
+    def decrypt(self, password_s, keysafe_s, data_s, dataEncoding_s=None):
         """Decrypts the dictionary and the configuration section
 
         Decrypts the configuration in data_s with information retrieved from
@@ -260,6 +260,7 @@ class VMwareVMX(object):
                 configuration.
             data_s (str): part two of the configuration; contains the
                 encrypted configuration data.
+            dataEncoding_s (str): encoding of data_s, 'None' results in using 'utf-8'
 
         Returns:
             str: either the decrypted configuration or None if the given
@@ -513,7 +514,10 @@ class VMwareVMX(object):
         self.aes_iv1 = dict_aes_iv
         self.aes_iv2 = config_aes_iv
         self.aes_key2 = config_key
-        return config_dec.decode()
+        if dataEncoding_s is None:
+            return config_dec.decode()
+        else:
+            return config_dec.decode(encoding=dataEncoding_s)
 
     def encrypt(self, password_s, config_s):
         """Encrypts the configuration and returns it as two strings

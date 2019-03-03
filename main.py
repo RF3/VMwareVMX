@@ -74,7 +74,7 @@ def main(argv):
     except getopt.GetoptError as err:
         sys.stderr.write(str(err) + '\n')
         sys.exit(usage)
-    
+
     for (opt, arg) in opts:
         if opt in ('-a', '--add'):
             addfilename = arg
@@ -138,10 +138,15 @@ def main(argv):
 
     # Decrypt the configuration
     if decrypt:
+        dataEncoding = None
         keysafe = None
         data = None
 
         for line in lines:
+            if '.encoding' in line:
+                match = re.match('.encoding *= *"(.+)"\n', line)
+                if match:
+                    dataEncoding = match.group(1).lower()
             if displayname is None:
                 match = re.match('displayName *= *"(.+)"\n', line)
                 if match:
@@ -155,7 +160,7 @@ def main(argv):
             sys.exit('Error: File ' + infilename + ' is not a valid VMX file')
 
         try:
-            config = VMX.decrypt(password, keysafe, data)
+            config = VMX.decrypt(password, keysafe, data, dataEncoding)
         except ValueError as err:
             sys.exit('Error: ' + str(err))
 
