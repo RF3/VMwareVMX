@@ -198,7 +198,7 @@ def main(argv):
         except ValueError as err:
             sys.exit('Error: '+ str(err))
 
-        config = '.encoding = "UTF-8"\ndisplayName = "{n}"\n{k}\n{d}\n' \
+        config = '.encoding = "UTF-8"\ndisplayname = "{n}"\n{k}\n{d}\n' \
                  .format(n=displayname, k=keysafe, d=data)
 
     # Write to the configuration file or to stdout
