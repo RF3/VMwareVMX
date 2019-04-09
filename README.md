@@ -9,6 +9,12 @@ all virtual disks) and, after the modification was done, re-encrypted the
 whole virtual machine again. Until this little module was written, which
 implements the methods to decrypt and encrypt the configuration data.
 
+### Prerequisites:
+
+The pycrypto Module is used, so it must be installed like this:
+
+    pip install pycrypto
+
 ### Installation:
 
 Currently there's no installation procedure. All you have to do is to import
