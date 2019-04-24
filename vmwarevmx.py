@@ -68,7 +68,7 @@ class VMwareVMX(object):
     __AES_MODE = AES.MODE_CBC
     __HASH_SIZE = 20  # sha1
     __DICT_SIZE = AES_IV_SIZE + 80 + __HASH_SIZE
-    __HASH_ROUNDS = 1000
+    __HASH_ROUNDS = 10000
 
     def __init__(self):
         """Initialize the public attributes
