@@ -143,7 +143,7 @@ def main(argv):
 
         for line in lines:
             if displayname is None:
-                match = re.match('displayname *= *"(.+)"\n', line)
+                match = re.match('displayname *= *"(.+)"\n', line, re.IGNORECASE)
                 if match:
                     displayname = match.group(1)
             if 'encryption.keySafe' in line:
