@@ -38,7 +38,7 @@ Public constants:
         The fixed size of the AES Key in bytes
 """
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 
 import hashlib
 import hmac
@@ -68,7 +68,6 @@ class VMwareVMX(object):
     __AES_MODE = AES.MODE_CBC
     __HASH_SIZE = 20  # sha1
     __DICT_SIZE = AES_IV_SIZE + 80 + __HASH_SIZE
-    __HASH_ROUNDS = 1000
 
     def __init__(self):
         """Initialize the public attributes
@@ -246,7 +245,7 @@ class VMwareVMX(object):
         self.aes_key2 = source.aes_key2
         return self
 
-    def decrypt(self, password_s, keysafe_s, data_s):
+    def decrypt(self, password_s, keysafe_s, data_s, encoding_s = "utf-8"):
         """Decrypts the dictionary and the configuration section
 
         Decrypts the configuration in data_s with information retrieved from
@@ -260,6 +259,8 @@ class VMwareVMX(object):
                 configuration.
             data_s (str): part two of the configuration; contains the
                 encrypted configuration data.
+            encoding_s (str): encoding to be used for the configuration;
+                default is UTF-8
 
         Returns:
             str: either the decrypted configuration or None if the given
@@ -337,7 +338,7 @@ class VMwareVMX(object):
         # Get and check if the hash rounds are greater than 0
         hash_rounds = int(match.group(4))
         if hash_rounds == 0:
-            msg = 'Password rounds must be non-zero'
+            msg = 'Password hash rounds must be non-zero'
             raise ValueError(msg)
 
         # Get, unquote and decode the password salt
@@ -513,9 +514,9 @@ class VMwareVMX(object):
         self.aes_iv1 = dict_aes_iv
         self.aes_iv2 = config_aes_iv
         self.aes_key2 = config_key
-        return config_dec.decode()
+        return config_dec.decode(encoding=encoding_s)
 
-    def encrypt(self, password_s, config_s):
+    def encrypt(self, password_s, config_s, hash_rounds = 1000):
         """Encrypts the configuration and returns it as two strings
 
         If any of the public attributes is None, a random value is created.
@@ -524,6 +525,7 @@ class VMwareVMX(object):
         Args:
             password_s (str): the password to encrypt the configuration.
             config_s (str): the configuration to be encrypted.
+            hash_rounds (int): the number of hash rounds for encryption key
 
         Returns:
             str: the encrypted dictionary (keySafe) as parameter 1.
@@ -617,7 +619,7 @@ class VMwareVMX(object):
 
         # Create the dictionary AES Key with PBKDF2-HMAC-SHA-1
         dict_key = hashlib.pbkdf2_hmac('sha1', password_s.encode(), self.salt,
-                                       self.__HASH_ROUNDS, self.AES_KEY_SIZE)
+                                       hash_rounds, self.AES_KEY_SIZE)
 
         # Check if the result is an AES-256 key
         if len(dict_key) != self.AES_KEY_SIZE:
@@ -654,7 +656,7 @@ class VMwareVMX(object):
 
         # Build the dictionary string
         dict_s = 'pass2key={}:cipher={}:rounds={}:salt={},{},{}' \
-                 .format('PBKDF2-HMAC-SHA-1', 'AES-256', self.__HASH_ROUNDS,
+                 .format('PBKDF2-HMAC-SHA-1', 'AES-256', hash_rounds,
                          salt_s, 'HMAC-SHA-1', dict_s)
 
         # Quote the dictionary string

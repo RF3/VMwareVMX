@@ -39,8 +39,8 @@ Both the module and the command line interface were tested with python 2 and 3.
 
 `python main.py -h`
 
-    Usage:  main.py [-defhnv] [-a file] [-D name] [-p password] [-r file] in_file [out_file]
-      -a, --add          decrypt, add line(s) and encrypt in_file
+    Usage:  ./main.py [-defhnv] [-a file] [-D name] [-p password] [-r file] [-x value] in_file [out_file]
+      -a, --add          decrypt, add line(s) from file and encrypt in_file
       -d, --decrypt      decrypt in_file (default)
       -D, --displayname  set the displayname for encrypted configuration
       -e, --encrypt      encrypt in_file
@@ -48,8 +48,9 @@ Both the module and the command line interface were tested with python 2 and 3.
       -h, --help         display this message
       -n, --new          after decrypt, use new parameters for encrypt
       -p, --password     set the password (default: ask for it)
-      -r, --remove       decrypt, remove line(s) and encrypt in_file
+      -r, --remove       decrypt, remove line(s) found in file and encrypt in_file
       -v, --version      print the version string and exit
+      -x, --hashrounds   used for the number of hash rounds of the encryption key
 
 #### Decrypt an encrypted VMX config file:
 
@@ -81,4 +82,4 @@ options.
 
 ### Author
 
-Written 2018 by Robert Federle <r.federle3@gmx.de>
+Written 2018-2019 by Robert Federle <r.federle3@gmx.de>
