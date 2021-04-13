@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 #  vmwarevmx.py : VMwareVMX
@@ -46,9 +46,15 @@ import re
 
 from base64 import b64decode, b64encode
 from binascii import hexlify
-from Crypto.Cipher import AES
-from Crypto import Random
 from functools import reduce
+try:
+    from Crypto import Random
+    from Crypto.Cipher import AES
+    from Crypto.Util.Padding import pad
+except ImportError:
+    from Cryptodome import Random
+    from Cryptodome.Cipher import AES
+    from Cryptodome.Util.Padding import pad
 try:
     from urllib import unquote  # Python 2
 except ImportError:
@@ -594,22 +600,6 @@ class VMwareVMX(object):
                      (':', '%3a'), ('=', '%3d')]
             return reduce(lambda a, kv: a.replace(*kv), repls, string_s)
 
-        def pad(data):
-            """Add padding bytes
-
-            Adds 1-16 padding bytes whose values are equal to the amount of
-            bytes to be added. Thus the decoding process just has to read a
-            padding byte and knows how many padding bytes were added.
-
-            Args:
-                data (bytes): data to be padded.
-
-            Returns:
-                bytes: the padded data.
-            """
-            value = AES.block_size - len(data) % AES.block_size
-            return data + value * chr(value)
-
         # Create the configuration AES key if not already set
         if self.aes_key2 is None:
             self.aes_key2 = Random.new().read(self.AES_KEY_SIZE)
@@ -620,7 +610,7 @@ class VMwareVMX(object):
         del hash
 
         # Add padding bytes to the configuration (must be multiple of 16)
-        config_dec = pad(config_s)
+        config_dec = pad(config_s.encode(), AES.block_size)
 
         # Create the AES Initialization Vector if not already set
         if self.aes_iv2 is None:
@@ -628,7 +618,7 @@ class VMwareVMX(object):
 
         # Encrypt the configuration and add AES IV and hash
         cipher = AES.new(self.aes_key2, self.__AES_MODE, self.aes_iv2)
-        config_enc = self.aes_iv2 + cipher.encrypt(config_dec.encode()) + config_hash
+        config_enc = self.aes_iv2 + cipher.encrypt(config_dec) + config_hash
         del cipher
 
         # Encode the configuration
@@ -663,7 +653,7 @@ class VMwareVMX(object):
         del hash
 
         # Add padding bytes to the dictionary (must be multiple of 16)
-        dict_dec = pad(dict_dec)
+        dict_dec = pad(dict_dec.encode(), AES.block_size)
 
         # Create the AES Initialization Vector if not already set
         if self.aes_iv1 is None:
@@ -671,7 +661,7 @@ class VMwareVMX(object):
 
         # Encrypt the dictionary and add AES IV and hash
         cipher = AES.new(dict_key, self.__AES_MODE, self.aes_iv1)
-        dict_enc = self.aes_iv1 + cipher.encrypt(dict_dec.encode()) + dict_hash
+        dict_enc = self.aes_iv1 + cipher.encrypt(dict_dec) + dict_hash
         del cipher
 
         # Encode the configuration

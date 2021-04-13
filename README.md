@@ -88,6 +88,8 @@ options.
    ignoring some errors happening during decryption. Due to the nature of
    the AES encryption, this only works up to the point where the file got
    corrupted. If it's in the beginning, not much of it will be recovered.
+ - Replaced pad() function with Crypto.Util.Padding.pad() and fixed the error
+   of padding before encoding. Thanks to mroi.
 
 ### Author
 
