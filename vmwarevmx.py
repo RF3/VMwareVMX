@@ -3,7 +3,7 @@
 #
 #  vmwarevmx.py : VMwareVMX
 #
-#  Written 2018 by Robert Federle <r.federle3@gmx.de>
+#  Written 2018-2021 by Robert Federle <r.federle3@gmx.de>
 #
 """
 VMware VMX Crypto Module
@@ -38,7 +38,7 @@ Public constants:
         The fixed size of the AES Key in bytes
 """
 
-__version__ = '1.0.1'
+__version__ = '1.0.2'
 
 import hashlib
 import hmac
@@ -245,7 +245,7 @@ class VMwareVMX(object):
         self.aes_key2 = source.aes_key2
         return self
 
-    def decrypt(self, password_s, keysafe_s, data_s, encoding_s = "utf-8"):
+    def decrypt(self, password_s, keysafe_s, data_s, encoding_s = "utf-8", ignore_errors = False):
         """Decrypts the dictionary and the configuration section
 
         Decrypts the configuration in data_s with information retrieved from
@@ -279,6 +279,7 @@ class VMwareVMX(object):
         TYPE_RE    = '([a-z]+)'
 
         DATA_RE    = '.*\"' + BASE64_RE + '\"'
+        DATA2_RE   = '.*\"' + BASE64_RE
         DICT_RE    = 'type=' + TYPE_RE \
                    + ':cipher=' + CIPHER_RE \
                    + ':key=' + QUOTED_RE
@@ -383,13 +384,15 @@ class VMwareVMX(object):
             raise ValueError(msg)
 
         # Get the AES IV and decrypt the dictionary (skip AES IV and hash)
+        # Layout of dict_enc: AES IV | Encrypted Dictionary | HASH
         dict_aes_iv = dict_enc[:self.AES_IV_SIZE]
         cipher = AES.new(dict_key, self.__AES_MODE, dict_aes_iv)
         dict_dec = cipher.decrypt(dict_enc[self.AES_IV_SIZE :
                                            -(self.__HASH_SIZE)])
         del cipher
 
-        # Get the last byte which contains the padding value (=size)
+        # Get the last byte which contains the padding size
+        # Layout of dict_dec: Decrypted Dictionary | Padding Bytes | Padding Size (1 byte)
         try:
             padding_size = ord(dict_dec[-1])  # Python 2
         except TypeError:
@@ -454,59 +457,86 @@ class VMwareVMX(object):
         data_s = unquote(data_s)
         match = re.match(DATA_RE, data_s)
         if not match:
-            msg = 'Unsupported format of the encryption.data line'
-            raise ValueError(msg)
+            if ignore_errors:
+                match = re.match(DATA2_RE, data_s)
+                if not match:
+                    msg = 'Unsupported format of the encryption.data line'
+                    raise ValueError(msg)
+            else:
+                msg = 'Unsupported format of the encryption.data line'
+                raise ValueError(msg)
 
         # Get the encoded configuration and decode it
         config_s = match.group(1)
         config_enc = decode_base64(config_s)
+        # Sucessfully decoded?
         if config_enc is None:
-            msg = 'Configuration is not a valid BASE64 string:\n' \
-                + config_s
-            raise ValueError(msg)
+            if ignore_errors:
+                # Shrink the string to find a valid BASE64 encoded string
+                while len(config_s) > 0:
+                    # Remove the last character
+                    config_s = config_s[:-1]
+                    config_enc = decode_base64(config_s)
+                    # Sucessfully decoded?
+                    if config_enc is not None:
+                        break
+            else:
+                msg = 'Configuration is not a valid BASE64 string:\n' \
+                    + config_s
+                raise ValueError(msg)
 
-        # The encrypted configuration must be a multiple of the AES
-        # Block Size else something is wrong
+        # The length of the encrypted configuration must be a multiple of the
+        # AES Block Size (16 bytes) or something is wrong
         if ((len(config_enc) - self.__HASH_SIZE) % AES.block_size) != 0:
-            msg = 'Configuration has incorrect length: {}' \
-                  .format(len(config_enc))
-            raise ValueError(msg)
+            if ignore_errors:
+                # The new length will be a multiple of the AES Block Size plus hash
+                newlen = len(config_enc) - self.__HASH_SIZE
+                newlen = newlen - (newlen % AES.block_size) + self.__HASH_SIZE
+                # Shrink the encoded data to the new length
+                config_enc = config_enc[:newlen]
+            else:
+                msg = 'Configuration has incorrect length: {}' \
+                      .format(len(config_enc))
+                raise ValueError(msg)
 
         # Get the AES IV and decrypt the configuration (skip AES IV and hash)
+        # Layout of config_enc: AES IV | Encrypted Data | HASH
         config_aes_iv = config_enc[:self.AES_IV_SIZE]
         cipher = AES.new(config_key, self.__AES_MODE, config_aes_iv)
         config_dec = cipher.decrypt(config_enc[self.AES_IV_SIZE :
                                                -(self.__HASH_SIZE)])
         del cipher
 
-        # Get the last byte which contains the padding value (=size)
+        # Get the last byte which contains the padding size
+        # Layout of config_dec: Decrypted Data | Padding Bytes | Padding Size (1 byte)
         try:
             padding_size = ord(config_dec[-1])  # Python 2
         except TypeError:
             padding_size = config_dec[-1]  # Python 3
 
         # Check the padding size
-        if padding_size < 1 or padding_size > 16:
-            msg = 'Illegal config padding value found: {}'.format(padding_size)
+        if (padding_size < 1 or padding_size > 16) and not ignore_errors:
+            msg = 'Illegal config padding size found: {}'.format(padding_size)
             raise ValueError(msg)
 
-        # Remove all padding bytes (between 1 and 16)
-        config_dec = config_dec[:-padding_size]
+        if not ignore_errors:
+            # Remove all padding bytes (between 1 and 16)
+            config_dec = config_dec[:-padding_size]
 
-        # Get the configuration hash which is stored at the end
-        config_hash = config_enc[-(self.__HASH_SIZE):]
+            # Get the configuration hash which is stored at the end
+            config_hash = config_enc[-(self.__HASH_SIZE):]
 
-        # Calculate the hash value of the configuration
-        hash = hmac.new(config_key, config_dec, digestmod=hashlib.sha1)
-        config_hash2 = hash.digest()
-        del hash
+            # Calculate the hash value of the configuration
+            hash = hmac.new(config_key, config_dec, digestmod=hashlib.sha1)
+            config_hash2 = hash.digest()
+            del hash
 
-        # Abort if configuration hash values don't match
-        if config_hash != config_hash2:
-            msg = 'Config hash mismatch:\n{}\n{}' \
-                  .format(hexlify(config_hash).decode(),
-                          hexlify(config_hash2).decode())
-            raise ValueError(msg)
+            # Abort if configuration hash values don't match
+            if config_hash != config_hash2:
+                msg = 'Config hash mismatch:\n{}\n{}' \
+                      .format(hexlify(config_hash).decode(),
+                              hexlify(config_hash2).decode())
+                raise ValueError(msg)
 
         # Decryption was successful; set attributes and return configuration
         self.identifier = identifier
@@ -525,7 +555,7 @@ class VMwareVMX(object):
         Args:
             password_s (str): the password to encrypt the configuration.
             config_s (str): the configuration to be encrypted.
-            hash_rounds (int): the number of hash rounds for encryption key
+            hash_rounds (int): the number of hash rounds for the encryption key
 
         Returns:
             str: the encrypted dictionary (keySafe) as parameter 1.

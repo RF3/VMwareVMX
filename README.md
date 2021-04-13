@@ -46,6 +46,7 @@ Both the module and the command line interface were tested with python 2 and 3.
       -e, --encrypt      encrypt in_file
       -f, --force        force overwriting out_file
       -h, --help         display this message
+      -i, --ignore       ignore some errors preventing decryption of a corrupted in_file
       -n, --new          after decrypt, use new parameters for encrypt
       -p, --password     set the password (default: ask for it)
       -r, --remove       decrypt, remove line(s) found in file and encrypt in_file
@@ -80,6 +81,14 @@ means that the encryption.keySafe line is the same in old.vmx and new.vmx. To
 use completely new keys and encryption parameters, add -n or --new to the
 options.
 
+### Changes
+
+1.0.2:
+ - Added -i (--ignore) option to be able to open a corrupted .vmx file by
+   ignoring some errors happening during decryption. Due to the nature of
+   the AES encryption, this only works up to the point where the file got
+   corrupted. If it's in the beginning, not much of it will be recovered.
+
 ### Author
 
-Written 2018-2019 by Robert Federle <r.federle3@gmx.de>
+Written 2018-2021 by Robert Federle <r.federle3@gmx.de>

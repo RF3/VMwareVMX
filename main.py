@@ -4,7 +4,7 @@
 #  main.py
 #
 
-version = '1.0.1'
+version = '1.0.2'
 
 import getopt
 from getpass import getpass
@@ -37,9 +37,12 @@ def main(argv):
     config = None
     decrypt = False
     displayname = None
+    guestOSdetaileddata = None
+
     encrypt = False
     force = False
-    hashrounds = 1000
+    hash_rounds = 1000
+    ignore = False
     new = False
     outfilename = None
     password = None
@@ -58,6 +61,8 @@ def main(argv):
                 'force overwriting out_file'),
                ('h', 'help',        '',
                 'display this message'),
+               ('i', 'ignore',      '',
+                'ignore some errors preventing decryption of a corrupted in_file'),
                ('n', 'new',         '',
                 'after decrypt, use new parameters for encrypt'),
                ('p', 'password',    'password',
@@ -93,6 +98,8 @@ def main(argv):
         elif opt in ('-h', '--help'):
             print(usage)
             sys.exit(0)
+        elif opt in ('-i', '--ignore'):
+            ignore = True
         elif opt in ('-n', '--new'):
             new = True
         elif opt in ('-p', '--password'):
@@ -102,12 +109,12 @@ def main(argv):
             remove, decrypt, encrypt = True, True, True
         elif opt in ('-v', '--version'):
             print('VMwareVMX Crypto Tool v{}\n' \
-                  'Copyright (C) 2018-2019 Robert Federle'.format(version))
+                  'Copyright (C) 2018-2021 Robert Federle'.format(version))
             sys.exit(0)
         elif opt in ('-x', '--hashrounds'):
             try:
-                hashrounds = int(arg)
-                if hashrounds <= 0:
+                hash_rounds = int(arg)
+                if hash_rounds <= 0:
                     sys.exit('Error: hashrounds value must be a positive non-zero integer')
             except ValueError:
                 sys.exit('Error: hashrounds value must be a positive non-zero integer')
@@ -156,6 +163,10 @@ def main(argv):
                 match = re.match('display[Nn]ame *= *"(.+)"\n', line)
                 if match:
                     displayname = match.group(1)
+            if guestOSdetaileddata is None:
+                match = re.match('guestOS.detailed.data *= *"(.+)"\n', line)
+                if match:
+                    guestOSdetaileddata = match.group(1)
             if 'encryption.keySafe' in line:
                 keysafe = line
             if 'encryption.data' in line:
@@ -169,7 +180,7 @@ def main(argv):
             sys.exit('Error: File ' + infilename + ' is not a valid VMX file')
 
         try:
-            config = VMX.decrypt(password, keysafe, data, encoding)
+            config = VMX.decrypt(password, keysafe, data, encoding, ignore)
         except ValueError as err:
             sys.exit('Error: ' + str(err))
 
@@ -204,16 +215,19 @@ def main(argv):
         if displayname is None:
             sys.exit('Error: Displayname is missing')
 
+        if guestOSdetaileddata is not None:
+          guestOSdetaileddata = 'guestOS.detailed.data = "{g}"\n' \
+                                .format(g=guestOSdetaileddata)
         if config is None:
             config = ''.join(lines)
 
         try:
-            (keysafe, data) = VMX.encrypt(password, config, hashrounds)
+            (keysafe, data) = VMX.encrypt(password, config, hash_rounds)
         except ValueError as err:
             sys.exit('Error: '+ str(err))
 
-        config = '.encoding = "UTF-8"\ndisplayName = "{n}"\n{k}\n{d}\n' \
-                 .format(n=displayname, k=keysafe, d=data)
+        config = '.encoding = "UTF-8"\ndisplayName = "{n}"\n{g}{k}\n{d}\n' \
+                 .format(n=displayname, g=guestOSdetaileddata, k=keysafe, d=data)
 
     # Write to the configuration file or to stdout
     if outfilename is None or outfilename == '-':
