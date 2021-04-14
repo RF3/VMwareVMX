@@ -1,6 +1,6 @@
 ## VMwareVMX
 
-VMware VMX Crypto Module for Python 2 and 3
+VMware VMX Crypto Module for Python 2 (deprecated) and 3
 
 VMware VMX configuration files are encrypted when the virtual machine
 is encrypted, too. Making specific changes by hand to these files was
@@ -11,9 +11,9 @@ implements the methods to decrypt and encrypt the configuration data.
 
 ### Prerequisites:
 
-The pycrypto Module is used, so it must be installed like this:
+The pycryptodome Module is used, so it must be installed like this:
 
-    pip install pycrypto
+    pip install pycryptodome
 
 ### Installation:
 
@@ -32,12 +32,9 @@ example on how to use the VMwareVMX class.
 
 ### Examples:
 
-You can replace `python` with `python3` in the following examples if you want.
-Both the module and the command line interface were tested with python 2 and 3.
-
 #### List all options (usage):
 
-`python main.py -h`
+`./main.py -h`
 
     Usage:  ./main.py [-defhnv] [-a file] [-D name] [-p password] [-r file] [-x value] in_file [out_file]
       -a, --add          decrypt, add line(s) from file and encrypt in_file
@@ -55,14 +52,14 @@ Both the module and the command line interface were tested with python 2 and 3.
 
 #### Decrypt an encrypted VMX config file:
 
-`python main.py old.vmx`
+`./main.py old.vmx`
 
 Will ask for the password, decrypts the VMX file old.vmx and writes the
 result directly to stdout.
 
 #### Encrypt a regular VMX config file:
 
-`python main.py -e -D "Windows 10" -p test1234 old.vmx new.vmx`
+`./main.py -e -D "Windows 10" -p test1234 old.vmx new.vmx`
 
 Encrypts the VMX file old.vmx with password `test1234`, adds the display
 name "Windows 10" to the config file and writes the result to new.vmx. If
@@ -70,7 +67,7 @@ new.vmx already exists, it's not overwritten. Add -f or --force to do so.
 
 #### Decrypt a VMX config file, remove some lines, add lines and encrypt it:
 
-`python main.py -a add.txt -r remove.txt old.vmx > new.vmx`
+`./main.py -a add.txt -r remove.txt old.vmx > new.vmx`
 
 Will ask for the password, decrypts the VMX file old.vmx, removes all the
 lines that can be found in remove.txt from the configuration, adds new lines
