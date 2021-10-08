@@ -37,7 +37,7 @@ def main(argv):
     config = None
     decrypt = False
     displayname = None
-    guestOSdetaileddata = None
+    guestOSdetaileddata = ""
 
     encrypt = False
     force = False
@@ -215,7 +215,7 @@ def main(argv):
         if displayname is None:
             sys.exit('Error: Displayname is missing')
 
-        if guestOSdetaileddata is not None:
+        if guestOSdetaileddata:
           guestOSdetaileddata = 'guestOS.detailed.data = "{g}"\n' \
                                 .format(g=guestOSdetaileddata)
         if config is None:
