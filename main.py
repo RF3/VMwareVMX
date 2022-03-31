@@ -163,7 +163,7 @@ def main(argv):
                 match = re.match('display[Nn]ame *= *"(.+)"\n', line)
                 if match:
                     displayname = match.group(1)
-            if guestOSdetaileddata is None:
+            if guestOSdetaileddata == '':
                 match = re.match('guestOS.detailed.data *= *"(.+)"\n', line)
                 if match:
                     guestOSdetaileddata = match.group(1)
