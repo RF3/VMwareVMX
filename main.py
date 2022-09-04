@@ -200,7 +200,7 @@ def main(argv):
     # Add lines to the configuration
     if add:
         try:
-            addconfig = open(addfilename, "r").read()
+            addconfig = open(addfilename, "r", encoding="utf8").read()
         except (OSError, IOError):
             sys.exit('Error: Cannot read from file ' + addfilename)
 
