@@ -3,7 +3,7 @@
 #
 #  vmwarevmx.py : VMwareVMX
 #
-#  Written 2018-2021 by Robert Federle <r.federle3@gmx.de>
+#  Written 2018-2022 by Robert Federle <r.federle3@gmx.de>
 #
 """
 VMware VMX Crypto Module

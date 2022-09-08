@@ -41,14 +41,13 @@ def initgetopt(name, options, files=''):
 def main(argv):
     add = False
     addfilename = None
-    config = None
     changepassword = False
+    config = None
     decrypt = False
     displayname = None
-    guestOSdetaileddata = ""
-
     encrypt = False
     force = False
+    guestOSdetaileddata = ""
     hash_rounds = 1000
     ignore = False
     new = False
@@ -125,7 +124,7 @@ def main(argv):
             remove, decrypt, encrypt = True, True, True
         elif opt in ('-v', '--version'):
             print('VMwareVMX Crypto Tool v{}\n' \
-                  'Copyright (C) 2018-2021 Robert Federle'.format(version))
+                  'Copyright (C) 2018-2022 Robert Federle'.format(version))
             sys.exit(0)
         elif opt in ('-x', '--hashrounds'):
             try:
