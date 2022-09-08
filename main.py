@@ -4,7 +4,7 @@
 #  main.py
 #
 
-version = '1.0.3'
+version = '1.0.4'
 
 import getopt
 from getpass import getpass
@@ -12,6 +12,13 @@ import os
 import re
 import sys
 from vmwarevmx import VMwareVMX
+
+def getpassword(text):
+    try:
+        password = getpass(text)
+    except (EOFError, KeyboardInterrupt):
+        sys.exit('\nError: Need a password')
+    return password
 
 def initgetopt(name, options, files=''):
     maxlen     =       max(len(long)
@@ -35,6 +42,7 @@ def main(argv):
     add = False
     addfilename = None
     config = None
+    changepassword = False
     decrypt = False
     displayname = None
     guestOSdetaileddata = ""
@@ -51,6 +59,8 @@ def main(argv):
     options = [
                ('a', 'add',         'file',
                 'decrypt, add line(s) from file and encrypt in_file'),
+               ('c', 'change',      '',
+                'change password'),
                ('d', 'decrypt',     '',
                 'decrypt in_file (default)'),
                ('D', 'displayname', 'name',
@@ -59,6 +69,8 @@ def main(argv):
                 'encrypt in_file'),
                ('f', 'force',       '',
                 'force overwriting out_file'),
+               ('g', 'guestos',     '',
+                'set the guestOS parameter'),
                ('h', 'help',        '',
                 'display this message'),
                ('i', 'ignore',      '',
@@ -87,6 +99,8 @@ def main(argv):
         if opt in ('-a', '--add'):
             addfilename = arg
             add, decrypt, encrypt = True, True, True
+        elif opt in ('-c', '--change'):
+            changepassword, decrypt, encrypt = True, True, True
         elif opt in ('-d', '--decrypt'):
             decrypt = True
         elif opt in ('-D', '--displayname'):
@@ -95,6 +109,8 @@ def main(argv):
             encrypt = True
         elif opt in ('-f', '--force'):
             force = True
+        elif opt in ('-g', '--guestos'):
+            guestOSdetaileddata = arg
         elif opt in ('-h', '--help'):
             print(usage)
             sys.exit(0)
@@ -137,10 +153,7 @@ def main(argv):
         sys.exit('Error: More arguments after filenames found')
 
     if password is None:
-        try:
-            password = getpass('Password:')
-        except (EOFError, KeyboardInterrupt):
-            sys.exit('\nError: Need a password')
+        password = getpassword('Password:')
 
     if password == '':
         sys.exit('Error: Empty password not allowed')
@@ -218,6 +231,15 @@ def main(argv):
         if guestOSdetaileddata:
           guestOSdetaileddata = 'guestOS.detailed.data = "{g}"\n' \
                                 .format(g=guestOSdetaileddata)
+
+        if changepassword:
+            password = getpassword('New Password:')
+            if password == '':
+                sys.exit('Error: Empty password not allowed')
+            password2 = getpassword('New Password (again):')
+            if password != password2:
+                sys.exit("Error: Passwords don't match")
+
         if config is None:
             config = ''.join(lines)
 

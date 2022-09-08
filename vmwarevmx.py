@@ -38,7 +38,7 @@ Public constants:
         The fixed size of the AES Key in bytes
 """
 
-__version__ = '1.0.2'
+__version__ = '1.0.4'
 
 import hashlib
 import hmac
@@ -397,6 +397,13 @@ class VMwareVMX(object):
                                            -(self.__HASH_SIZE)])
         del cipher
 
+        # check if the decrypted dictionary is in ASCII
+        try:
+            dict_dec.decode('ascii')
+        except UnicodeDecodeError:
+            msg = 'Wrong password'
+            raise ValueError(msg)
+    
         # Get the last byte which contains the padding size
         # Layout of dict_dec: Decrypted Dictionary | Padding Bytes | Padding Size (1 byte)
         try:
