@@ -36,12 +36,14 @@ example on how to use the VMwareVMX class.
 
 `./main.py -h`
 
-    Usage:  ./main.py [-defhnv] [-a file] [-D name] [-p password] [-r file] [-x value] in_file [out_file]
+    Usage:  ./main.py [-cdefghinv] [-a file] [-D name] [-p password] [-r file] [-x value] in_file [out_file]
       -a, --add          decrypt, add line(s) from file and encrypt in_file
+      -c, --change       change password
       -d, --decrypt      decrypt in_file (default)
       -D, --displayname  set the displayname for encrypted configuration
       -e, --encrypt      encrypt in_file
       -f, --force        force overwriting out_file
+      -g, --guestos      set the guestOS parameter
       -h, --help         display this message
       -i, --ignore       ignore some errors preventing decryption of a corrupted in_file
       -n, --new          after decrypt, use new parameters for encrypt
@@ -67,7 +69,7 @@ new.vmx already exists, it's not overwritten. Add -f or --force to do so.
 
 #### Decrypt a VMX config file, remove some lines, add lines and encrypt it:
 
-`./main.py -a add.txt -r remove.txt old.vmx > new.vmx`
+`./main.py -a add.txt -r remove.txt old.vmx new.vmx`
 
 Will ask for the password, decrypts the VMX file old.vmx, removes all the
 lines that can be found in remove.txt from the configuration, adds new lines
@@ -78,7 +80,27 @@ means that the encryption.keySafe line is the same in old.vmx and new.vmx. To
 use completely new keys and encryption parameters, add -n or --new to the
 options.
 
+#### Change the password of a VMX config file:
+
+`./main.py -c old.vmx new.vmx`
+
+This asks for the old password if not already given with the -p option and
+then asks twice for the new password. If the new passwords match, the new
+password is used for new.vmx.
+
 ### Changes
+
+1.0.4:
+ - Fix: Added UTF-8 encoding on file encryption (thanks Knoxberg)
+ - Added password change and guestos options:
+   - New option -c (or --change) allows one to change the password of a VMX
+     file without shutting down and restarting the client machine.
+   - New option -g (or --guestos) defines the guestOS parameter.
+ - Wrong password during decryption now results in a correct error message.
+
+1.0.3:
+ - Fix: Do not add "None" to output file if guestOSdetaileddata is empty
+   (thanks jbl42)
 
 1.0.2:
  - Added -i (--ignore) option to be able to open a corrupted .vmx file by
@@ -90,4 +112,4 @@ options.
 
 ### Author
 
-Written 2018-2021 by Robert Federle <r.federle3@gmx.de>
+Written 2018-2022 by Robert Federle <r.federle3@gmx.de>
