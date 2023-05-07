@@ -124,7 +124,7 @@ def main(argv):
             remove, decrypt, encrypt = True, True, True
         elif opt in ('-v', '--version'):
             print('VMwareVMX Crypto Tool v{}\n' \
-                  'Copyright (C) 2018-2022 Robert Federle'.format(version))
+                  'Copyright (C) 2018-2023 Robert Federle'.format(version))
             sys.exit(0)
         elif opt in ('-x', '--hashrounds'):
             try:
