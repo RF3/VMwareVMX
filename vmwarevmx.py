@@ -3,7 +3,7 @@
 #
 #  vmwarevmx.py : VMwareVMX
 #
-#  Written 2018-2022 by Robert Federle <r.federle3@gmx.de>
+#  Written 2018-2023 by Robert Federle <r.federle3@gmx.de>
 #
 """
 VMware VMX Crypto Module
@@ -17,13 +17,16 @@ the methods to decrypt and encrypt the configuration data.
 
 Public attributes:
 
-    There are five public attributes available which can be used to specify
+    There are six public attributes available which can be used to specify
     certain parameters for the encryption process. After a successful
     decryption, they contain the values of the current configuration. These
     attributes can be set to user-specified values or to None which means
     that a new random value should be automatically generated.
 
 Public constants:
+
+    HASH_ROUNDS
+        The number of hash rounds for the PBKDF2-HMAC-SHA-1 hashing algorithm
 
     IDENTIFIER_SIZE:
         The fixed size of the unique identifier in bytes
@@ -38,7 +41,7 @@ Public constants:
         The fixed size of the AES Key in bytes
 """
 
-__version__ = '1.0.4'
+__version__ = '1.0.5'
 
 import hashlib
 import hmac
@@ -67,6 +70,7 @@ class VMwareVMX(object):
     # Public constants
     AES_IV_SIZE = AES.block_size
     AES_KEY_SIZE = 256 // 8
+    HASH_ROUNDS = 10000
     IDENTIFIER_SIZE = 8
     SALT_SIZE = 16
 
@@ -80,6 +84,7 @@ class VMwareVMX(object):
 
         Sets the public attributes to their default values
         """
+        self.hash_rounds = None
         self.identifier = None
         self.salt = None
         self.aes_iv1 = None
@@ -121,12 +126,29 @@ class VMwareVMX(object):
             if len(attr) == length:
                 return attr
             else:
-                msg = 'Attribute {} has incorrect length: {}' \
-                      .format(name_s, len(attr))
+                msg = 'Attribute {} has incorrect length: {}'.format(name_s, len(attr))
                 raise ValueError(msg)
         else:
             msg = 'Attribute {} has wrong type'.format(name_s)
             raise TypeError(msg)
+
+    """hash_rounds(integer):
+        Contains the number of hash rounds for the PBKDF2-HMAC-SHA-1 hashing
+        algorithm to prevent brute force attacks.
+    """
+    @property
+    def hash_rounds(self):
+        return self.__hash_rounds
+
+    @hash_rounds.setter
+    def hash_rounds(self, value):
+        if value is not None:
+            if not isinstance(value, int):
+                msg = 'Attribute {} has wrong type'.format('hash_rounds')
+                raise TypeError(msg)
+
+        self.__hash_rounds = value
+
 
     """identifier(bytes):
         Contains the unique identifier after a successful decryption.
@@ -139,7 +161,7 @@ class VMwareVMX(object):
     """
     @property
     def identifier(self):
-         return self.__identifier
+        return self.__identifier
 
     @identifier.setter
     def identifier(self, value):
@@ -160,7 +182,7 @@ class VMwareVMX(object):
     """
     @property
     def salt(self):
-         return self.__salt
+        return self.__salt
 
     @salt.setter
     def salt(self, value):
@@ -179,7 +201,7 @@ class VMwareVMX(object):
     """
     @property
     def aes_iv1(self):
-         return self.__aes_iv1
+        return self.__aes_iv1
 
     @aes_iv1.setter
     def aes_iv1(self, value):
@@ -198,7 +220,7 @@ class VMwareVMX(object):
     """
     @property
     def aes_iv2(self):
-         return self.__aes_iv2
+        return self.__aes_iv2
 
     @aes_iv2.setter
     def aes_iv2(self, value):
@@ -216,12 +238,13 @@ class VMwareVMX(object):
     """
     @property
     def aes_key2(self):
-         return self.__aes_key2
+        return self.__aes_key2
 
     @aes_key2.setter
     def aes_key2(self, value):
-        self.__aes_key2 = self.__check_attr(value, self.AES_KEY_SIZE,
-                                            'aes_key2')
+        self.__aes_key2 = self.__check_attr(value, self.AES_KEY_SIZE, 'aes_key2')
+
+    #--------------------------------------------------------------------------
 
     def reinit(self):
         """Reinitializes the public attributes
@@ -244,12 +267,15 @@ class VMwareVMX(object):
         Returns:
             VMwareVMX: current class instance.
         """
+        self.hash_rounds = source.hash_rounds
         self.identifier = source.identifier
         self.salt = source.salt
         self.aes_iv1 = source.aes_iv1
         self.aes_iv2 = source.aes_iv2
         self.aes_key2 = source.aes_key2
         return self
+
+    #--------------------------------------------------------------------------
 
     def decrypt(self, password_s, keysafe_s, data_s, encoding_s = "utf-8", ignore_errors = False):
         """Decrypts the dictionary and the configuration section
@@ -311,15 +337,11 @@ class VMwareVMX(object):
             except (TypeError, ValueError):
                 return None
 
-        # Start with a clean setup and fill in values if successful decrypted
-        self.reinit()
-
         # Unquote, analyze and split encryption.keySafe line
         keysafe_s = unquote(keysafe_s)
         match = re.match(KEYSAFE_RE, keysafe_s)
         if not match:
-            msg = 'Unsupported format of the encryption.keySafe line:\n' \
-                + keysafe_s
+            msg = 'Unsupported format of the encryption.keySafe line:\n' + keysafe_s
             raise ValueError(msg)
 
         # Get and decode the identifier
@@ -338,14 +360,13 @@ class VMwareVMX(object):
         # Only one encryption algorithm for the dictionary is supported
         dict_cipher_s = match.group(3)
         if dict_cipher_s != 'AES-256':
-            msg = 'Unsupported dictionary encryption algorithm: ' \
-                + dict_cipher_s
+            msg = 'Unsupported dictionary encryption algorithm: ' + dict_cipher_s
             raise ValueError(msg)
 
         # Get and check if the hash rounds are greater than 0
         hash_rounds = int(match.group(4))
-        if hash_rounds == 0:
-            msg = 'Password hash rounds must be non-zero'
+        if hash_rounds <= 0:
+            msg = 'Password hash rounds must be a positive non-zero value'
             raise ValueError(msg)
 
         # Get, unquote and decode the password salt
@@ -363,8 +384,7 @@ class VMwareVMX(object):
         # Only one hash algorithm for the configuration is supported
         config_hash_s = match.group(6)
         if config_hash_s != 'HMAC-SHA-1':
-            msg = 'Unsupported configuration hash algorithm: ' \
-                + config_hash_s
+            msg = 'Unsupported configuration hash algorithm: ' + config_hash_s
             raise ValueError(msg)
 
         # Get and decode the dictionary
@@ -385,8 +405,7 @@ class VMwareVMX(object):
 
         # Check if the result is an AES-256 key
         if len(dict_key) != self.AES_KEY_SIZE:
-            msg = 'Dictionary AES key has incorrect length: {}' \
-                  .format(len(dict_key))
+            msg = 'Dictionary AES key has incorrect length: {}'.format(len(dict_key))
             raise ValueError(msg)
 
         # Get the AES IV and decrypt the dictionary (skip AES IV and hash)
@@ -401,8 +420,7 @@ class VMwareVMX(object):
         try:
             dict_dec.decode('ascii')
         except UnicodeDecodeError:
-            msg = 'Wrong password'
-            raise ValueError(msg)
+            return None
     
         # Get the last byte which contains the padding size
         # Layout of dict_dec: Decrypted Dictionary | Padding Bytes | Padding Size (1 byte)
@@ -413,8 +431,7 @@ class VMwareVMX(object):
 
         # Check the padding size
         if padding_size < 1 or padding_size > 16:
-            msg = 'Illegal dictionary padding value found: {}' \
-                  .format(padding_size)
+            msg = 'Illegal dictionary padding value found: {}'.format(padding_size)
             raise ValueError(msg)
 
         # Remove all padding bytes (between 1 and 16)
@@ -448,22 +465,19 @@ class VMwareVMX(object):
         # is supported
         config_cipher_s = match.group(2)
         if config_cipher_s != 'AES-256':
-            msg = 'Unsupported configuration encryption algorithm: ' \
-                + config_cipher_s
+            msg = 'Unsupported configuration encryption algorithm: ' + config_cipher_s
             raise ValueError(msg)
 
         # Get quoted configuration AES key, unquote and decode it
         config_key_s = unquote(match.group(3))
         config_key = decode_base64(config_key_s)
         if config_key is None:
-            msg = 'Configuration AES key is not a valid BASE64 string:\n' \
-                + config_key_s
+            msg = 'Configuration AES key is not a valid BASE64 string:\n' + config_key_s
             raise ValueError(msg)
 
         # Check if the result is an AES-256 key
         if len(config_key) != self.AES_KEY_SIZE:
-            msg = 'Configuration AES key has incorrect length: {}' \
-                  .format(len(config_key))
+            msg = 'Configuration AES key has incorrect length: {}'.format(len(config_key))
             raise ValueError(msg)
 
         # Unquote, analyze and split the encryption.data line
@@ -494,8 +508,7 @@ class VMwareVMX(object):
                     if config_enc is not None:
                         break
             else:
-                msg = 'Configuration is not a valid BASE64 string:\n' \
-                    + config_s
+                msg = 'Configuration is not a valid BASE64 string:\n' + config_s
                 raise ValueError(msg)
 
         # The length of the encrypted configuration must be a multiple of the
@@ -508,8 +521,7 @@ class VMwareVMX(object):
                 # Shrink the encoded data to the new length
                 config_enc = config_enc[:newlen]
             else:
-                msg = 'Configuration has incorrect length: {}' \
-                      .format(len(config_enc))
+                msg = 'Configuration has incorrect length: {}'.format(len(config_enc))
                 raise ValueError(msg)
 
         # Get the AES IV and decrypt the configuration (skip AES IV and hash)
@@ -552,6 +564,7 @@ class VMwareVMX(object):
                 raise ValueError(msg)
 
         # Decryption was successful; set attributes and return configuration
+        self.hash_rounds = hash_rounds
         self.identifier = identifier
         self.salt = salt
         self.aes_iv1 = dict_aes_iv
@@ -559,7 +572,9 @@ class VMwareVMX(object):
         self.aes_key2 = config_key
         return config_dec.decode(encoding=encoding_s)
 
-    def encrypt(self, password_s, config_s, hash_rounds = 1000):
+    #--------------------------------------------------------------------------
+
+    def encrypt(self, password_s, config_s, hash_rounds = None):
         """Encrypts the configuration and returns it as two strings
 
         If any of the public attributes is None, a random value is created.
@@ -607,6 +622,11 @@ class VMwareVMX(object):
                      (':', '%3a'), ('=', '%3d')]
             return reduce(lambda a, kv: a.replace(*kv), repls, string_s)
 
+        # Use the argument if specified. Otherwise use the previous value
+        # and if that one is undefined, too, use the default value.
+        if hash_rounds is None:
+            hash_rounds = self.HASH_ROUNDS if self.hash_rounds is None else self.hash_rounds
+
         # Create the configuration AES key if not already set
         if self.aes_key2 is None:
             self.aes_key2 = Random.new().read(self.AES_KEY_SIZE)
@@ -650,8 +670,7 @@ class VMwareVMX(object):
 
         # Check if the result is an AES-256 key
         if len(dict_key) != self.AES_KEY_SIZE:
-            msg = 'Dictionary AES key has incorrect length: {}' \
-                  .format(len(dict_key))
+            msg = 'Dictionary AES key has incorrect length: {}'.format(len(dict_key))
             raise ValueError(msg)
 
         # Calculate the dictionary hash
@@ -694,6 +713,9 @@ class VMwareVMX(object):
                     '"vmware:key/list/(pair/(phrase/{}/{}))"' \
                     .format(identifier_s, dict_s)
         data_s = 'encryption.data = "{}"'.format(config_s)
+
+        # Update the number of hash rounds
+        self.hash_rounds = hash_rounds
 
         # Return them
         return keysafe_s, data_s

@@ -4,7 +4,7 @@
 #  main.py
 #
 
-version = '1.0.4'
+version = '1.0.5'
 
 import getopt
 from getpass import getpass
@@ -47,8 +47,9 @@ def main(argv):
     displayname = None
     encrypt = False
     force = False
-    guestOSdetaileddata = ""
-    hash_rounds = 1000
+    guestOSdetaileddata = None
+    guestInfodetaileddata = None
+    hash_rounds = None
     ignore = False
     new = False
     outfilename = None
@@ -70,6 +71,8 @@ def main(argv):
                 'force overwriting out_file'),
                ('g', 'guestos',     '',
                 'set the guestOS parameter'),
+               ('G', 'guestinfo',   '',
+                'set the guestInfo parameter'),
                ('h', 'help',        '',
                 'display this message'),
                ('i', 'ignore',      '',
@@ -83,17 +86,18 @@ def main(argv):
                ('v', 'version',     '',
                 'print the version string and exit'),
                ('x', 'hashrounds',  'value',
-                'used for the number of hash rounds of the encryption key'),
+                'used for the number of hash rounds of the encryption key (default: 10,000)'),
               ]
 
-    (optshort, optlong, usage) = initgetopt(argv[0], options,
+    (optshort, optlong, usage) = initgetopt(os.path.basename(argv[0]),
+                                            options,
                                             'in_file [out_file]')
     try:
         (opts, args) = getopt.getopt(argv[1:], optshort, optlong)
     except getopt.GetoptError as err:
-        sys.stderr.write(str(err) + '\n')
+        sys.stderr.write('Error: ' + str(err) + '\n')
         sys.exit(usage)
-    
+
     for (opt, arg) in opts:
         if opt in ('-a', '--add'):
             addfilename = arg
@@ -110,8 +114,10 @@ def main(argv):
             force = True
         elif opt in ('-g', '--guestos'):
             guestOSdetaileddata = arg
+        elif opt in ('-G', '--guestinfo'):
+            guestInfodetaileddata = arg
         elif opt in ('-h', '--help'):
-            print(usage)
+            sys.stderr.write(usage + '\n')
             sys.exit(0)
         elif opt in ('-i', '--ignore'):
             ignore = True
@@ -123,16 +129,16 @@ def main(argv):
             removefilename = arg
             remove, decrypt, encrypt = True, True, True
         elif opt in ('-v', '--version'):
-            print('VMwareVMX Crypto Tool v{}\n' \
-                  'Copyright (C) 2018-2022 Robert Federle'.format(version))
+            print('VMwareVMX Crypto Tool v{v}\n' \
+                  'Copyright (C) 2018-2023 Robert Federle'.format(v=version))
             sys.exit(0)
         elif opt in ('-x', '--hashrounds'):
             try:
                 hash_rounds = int(arg)
                 if hash_rounds <= 0:
-                    sys.exit('Error: hashrounds value must be a positive non-zero integer')
+                    sys.exit('Error: hashrounds value must be a positive non-zero number')
             except ValueError:
-                sys.exit('Error: hashrounds value must be a positive non-zero integer')
+                sys.exit('Error: hashrounds value must be a positive non-zero number')
         else:
             sys.exit(usage)
 
@@ -160,8 +166,8 @@ def main(argv):
     try:
         with open(infilename, "r") as infile:
             lines = infile.readlines()
-    except (OSError, IOError):
-        sys.exit('Error: Cannot read from file ' + infilename)
+    except (OSError, IOError) as err:
+        sys.exit('Error: Cannot read from file ' + infilename + ": " +  str(err))
 
     VMX = VMwareVMX.new()
 
@@ -175,10 +181,14 @@ def main(argv):
                 match = re.match('display[Nn]ame *= *"(.+)"\n', line)
                 if match:
                     displayname = match.group(1)
-            if guestOSdetaileddata == '':
+            if guestOSdetaileddata is None:
                 match = re.match('guestOS.detailed.data *= *"(.+)"\n', line)
                 if match:
                     guestOSdetaileddata = match.group(1)
+            if guestInfodetaileddata is None:
+                match = re.match('guestInfo.detailed.data *= *"(.+)"\n', line)
+                if match:
+                    guestInfodetaileddata = match.group(1)
             if 'encryption.keySafe' in line:
                 keysafe = line
             if 'encryption.data' in line:
@@ -203,8 +213,8 @@ def main(argv):
     if remove:
         try:
             removelist = open(removefilename, "r").read().split('\n')
-        except (OSError, IOError):
-            sys.exit('Error: Cannot read from file ' + removefilename)
+        except (OSError, IOError) as err:
+            sys.exit('Error: Cannot read from file ' + removefilename + ": " +  str(err))
 
         lines = config.split('\n')
         config = '\n'.join([x for x in lines if x not in removelist]) + '\n'
@@ -213,12 +223,12 @@ def main(argv):
     if add:
         try:
             addconfig = open(addfilename, "r", encoding="utf8").read()
-        except (OSError, IOError):
-            sys.exit('Error: Cannot read from file ' + addfilename)
+        except (OSError, IOError) as err:
+            sys.exit('Error: Cannot read from file ' + addfilename + ": " +  str(err))
 
         config += addconfig
 
-    # Use new parameters (identifier, salt, AES IV, AES keys) for encryption?
+    # Use new parameters (hash_rounds, identifier, salt, AES IV, AES keys) for encryption?
     if new:
         VMX.reinit()
 
@@ -227,14 +237,22 @@ def main(argv):
         if displayname is None:
             sys.exit('Error: Displayname is missing')
 
-        if guestOSdetaileddata:
-          guestOSdetaileddata = 'guestOS.detailed.data = "{g}"\n' \
-                                .format(g=guestOSdetaileddata)
+        if guestOSdetaileddata is None:
+            guestOSdetaileddata = ""
+        else:
+            guestOSdetaileddata = 'guestOS.detailed.data = "{g}"\n' \
+                                  .format(g=guestOSdetaileddata)
+
+        if guestInfodetaileddata is None:
+            guestInfodetaileddata = ""
+        else:
+            guestInfodetaileddata = 'guestInfo.detailed.data = "{i}"\n' \
+                                    .format(i=guestInfodetaileddata)
 
         if changepassword:
             password = getpassword('New Password:')
             if password == '':
-                sys.exit('Error: Empty password not allowed')
+                sys.exit('Error: Empty password is not allowed')
             password2 = getpassword('New Password (again):')
             if password != password2:
                 sys.exit("Error: Passwords don't match")
@@ -242,13 +260,17 @@ def main(argv):
         if config is None:
             config = ''.join(lines)
 
+        # Reuse old value for hash_rounds if not overriden 
+        if hash_rounds is None:
+            hash_rounds = VMX.hash_rounds
+
         try:
             (keysafe, data) = VMX.encrypt(password, config, hash_rounds)
         except ValueError as err:
             sys.exit('Error: '+ str(err))
 
-        config = '.encoding = "UTF-8"\ndisplayName = "{n}"\n{g}{k}\n{d}\n' \
-                 .format(n=displayname, g=guestOSdetaileddata, k=keysafe, d=data)
+        config = '.encoding = "UTF-8"\ndisplayName = "{n}"\n{g}{i}{k}\n{d}\n' \
+                 .format(n=displayname, g=guestOSdetaileddata, i=guestInfodetaileddata, k=keysafe, d=data)
 
     # Write to the configuration file or to stdout
     if outfilename is None or outfilename == '-':
@@ -259,8 +281,8 @@ def main(argv):
                      'use --force to overwrite')
         try:
             open(outfilename, "w").write(config)
-        except (OSError, IOError):
-            sys.exit('Error: Cannot write to file ' + outfilename)
+        except (OSError, IOError) as err:
+            sys.exit('Error: Cannot write to file ' + outfilename + ": " +  str(err))
 
     sys.exit(0)
 

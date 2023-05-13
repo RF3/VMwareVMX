@@ -36,7 +36,7 @@ example on how to use the VMwareVMX class.
 
 `./main.py -h`
 
-    Usage:  ./main.py [-cdefghinv] [-a file] [-D name] [-p password] [-r file] [-x value] in_file [out_file]
+    Usage:  main.py [-cdefgGhinv] [-a file] [-D name] [-p password] [-r file] [-x value] in_file [out_file]
       -a, --add          decrypt, add line(s) from file and encrypt in_file
       -c, --change       change password
       -d, --decrypt      decrypt in_file (default)
@@ -44,13 +44,15 @@ example on how to use the VMwareVMX class.
       -e, --encrypt      encrypt in_file
       -f, --force        force overwriting out_file
       -g, --guestos      set the guestOS parameter
+      -G, --guestinfo    set the guestInfo parameter
       -h, --help         display this message
       -i, --ignore       ignore some errors preventing decryption of a corrupted in_file
       -n, --new          after decrypt, use new parameters for encrypt
       -p, --password     set the password (default: ask for it)
       -r, --remove       decrypt, remove line(s) found in file and encrypt in_file
       -v, --version      print the version string and exit
-      -x, --hashrounds   used for the number of hash rounds of the encryption key
+      -x, --hashrounds   used for the number of hash rounds of the encryption key (default: 10,000)
+
 
 #### Decrypt an encrypted VMX config file:
 
@@ -89,6 +91,11 @@ then asks twice for the new password. If the new passwords match, the new
 password is used for new.vmx.
 
 ### Changes
+
+1.0.5:
+ - New option -G (or --guestinfo) defines the guestInfo parameter.
+ - Added public attribute "hash_rounds" with the number of hash rounds used for
+   the PBKDF2-HMAC-SHA-1 hashing algorithm.
 
 1.0.4:
  - Fix: Added UTF-8 encoding on file encryption (thanks Knoxberg)
