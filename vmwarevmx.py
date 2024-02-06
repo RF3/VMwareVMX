@@ -77,7 +77,7 @@ class VMwareVMX(object):
     # Private constants
     __AES_MODE = AES.MODE_CBC
     __HASH_SIZE = 20  # sha1
-    __DICT_SIZE = AES_IV_SIZE + 80 + __HASH_SIZE
+    __DICT_SIZE = AES_IV_SIZE + 64 + 2 * AES_KEY_SIZE + __HASH_SIZE
 
     def __init__(self):
         """Initialize the public attributes
@@ -89,7 +89,7 @@ class VMwareVMX(object):
         self.salt = None
         self.aes_iv1 = None
         self.aes_iv2 = None
-        self.aes_key2 = None
+        self.hmac_key2 = None
 
     @classmethod
     def new(cls):
@@ -226,23 +226,24 @@ class VMwareVMX(object):
     def aes_iv2(self, value):
         self.__aes_iv2 = self.__check_attr(value, self.AES_IV_SIZE, 'aes_iv2')
 
-    """aes_key2(bytes):
-        Contains the second AES Key after a successful decryption.
-        This is a 32 bytes AES-256 Key used to decrypt the configuration
-        together with the second AES IV.
+    """hmac_key2(bytes):
+        Contains the second HMAC Key after a successful decryption.
+        This is a 64 bytes key used to authenticate the configuration string
+        via a SHA-1 HMAC. The first 32 bytes of this key are used as an AES-256
+        key to decrypt the configuration together with the second AES IV.
 
-        If the value is None, the second AES Key will be created with random
+        If the value is None, the second HMAC Key will be created with random
         data on encryption. If the size isn't right, an exception of type 
         ValueError will be the result. If it's not of type bytes, an
         exception of type TypeError will be the result.
     """
     @property
-    def aes_key2(self):
-        return self.__aes_key2
+    def hmac_key2(self):
+        return self.__hmac_key2
 
-    @aes_key2.setter
-    def aes_key2(self, value):
-        self.__aes_key2 = self.__check_attr(value, self.AES_KEY_SIZE, 'aes_key2')
+    @hmac_key2.setter
+    def hmac_key2(self, value):
+        self.__hmac_key2 = self.__check_attr(value, 2 * self.AES_KEY_SIZE, 'hmac_key2')
 
     #--------------------------------------------------------------------------
 
@@ -359,7 +360,7 @@ class VMwareVMX(object):
 
         # Only one encryption algorithm for the dictionary is supported
         dict_cipher_s = match.group(3)
-        if dict_cipher_s != 'AES-256':
+        if dict_cipher_s != 'XTS-AES-256':
             msg = 'Unsupported dictionary encryption algorithm: ' + dict_cipher_s
             raise ValueError(msg)
 
@@ -401,17 +402,17 @@ class VMwareVMX(object):
 
         # Create the dictionary AES Key with PBKDF2-HMAC-SHA-1
         dict_key = hashlib.pbkdf2_hmac('sha1', password_s.encode(), salt,
-                                       hash_rounds, self.AES_KEY_SIZE)
+                                       hash_rounds, 2 * self.AES_KEY_SIZE)
 
         # Check if the result is an AES-256 key
-        if len(dict_key) != self.AES_KEY_SIZE:
+        if len(dict_key) != 2 * self.AES_KEY_SIZE:
             msg = 'Dictionary AES key has incorrect length: {}'.format(len(dict_key))
             raise ValueError(msg)
 
         # Get the AES IV and decrypt the dictionary (skip AES IV and hash)
         # Layout of dict_enc: AES IV | Encrypted Dictionary | HASH
         dict_aes_iv = dict_enc[:self.AES_IV_SIZE]
-        cipher = AES.new(dict_key, self.__AES_MODE, dict_aes_iv)
+        cipher = AES.new(dict_key[:self.AES_KEY_SIZE], self.__AES_MODE, dict_aes_iv)
         dict_dec = cipher.decrypt(dict_enc[self.AES_IV_SIZE :
                                            -(self.__HASH_SIZE)])
         del cipher
@@ -464,7 +465,7 @@ class VMwareVMX(object):
         # Currently only one encryption algorithm for the configuration
         # is supported
         config_cipher_s = match.group(2)
-        if config_cipher_s != 'AES-256':
+        if config_cipher_s != 'XTS-AES-256':
             msg = 'Unsupported configuration encryption algorithm: ' + config_cipher_s
             raise ValueError(msg)
 
@@ -476,7 +477,7 @@ class VMwareVMX(object):
             raise ValueError(msg)
 
         # Check if the result is an AES-256 key
-        if len(config_key) != self.AES_KEY_SIZE:
+        if len(config_key) != 2 * self.AES_KEY_SIZE:
             msg = 'Configuration AES key has incorrect length: {}'.format(len(config_key))
             raise ValueError(msg)
 
@@ -527,7 +528,7 @@ class VMwareVMX(object):
         # Get the AES IV and decrypt the configuration (skip AES IV and hash)
         # Layout of config_enc: AES IV | Encrypted Data | HASH
         config_aes_iv = config_enc[:self.AES_IV_SIZE]
-        cipher = AES.new(config_key, self.__AES_MODE, config_aes_iv)
+        cipher = AES.new(config_key[:self.AES_KEY_SIZE], self.__AES_MODE, config_aes_iv)
         config_dec = cipher.decrypt(config_enc[self.AES_IV_SIZE :
                                                -(self.__HASH_SIZE)])
         del cipher
@@ -569,7 +570,7 @@ class VMwareVMX(object):
         self.salt = salt
         self.aes_iv1 = dict_aes_iv
         self.aes_iv2 = config_aes_iv
-        self.aes_key2 = config_key
+        self.hmac_key2 = config_key
         return config_dec.decode(encoding=encoding_s)
 
     #--------------------------------------------------------------------------
@@ -627,12 +628,12 @@ class VMwareVMX(object):
         if hash_rounds is None:
             hash_rounds = self.HASH_ROUNDS if self.hash_rounds is None else self.hash_rounds
 
-        # Create the configuration AES key if not already set
-        if self.aes_key2 is None:
-            self.aes_key2 = Random.new().read(self.AES_KEY_SIZE)
+        # Create the configuration HMAC key if not already set
+        if self.hmac_key2 is None:
+            self.hmac_key2 = Random.new().read(2 * self.AES_KEY_SIZE)
 
         # Calculate the configuration hash
-        hash = hmac.new(self.aes_key2, config_s.encode(), digestmod=hashlib.sha1)
+        hash = hmac.new(self.hmac_key2, config_s.encode(), digestmod=hashlib.sha1)
         config_hash = hash.digest()
         del hash
 
@@ -644,18 +645,18 @@ class VMwareVMX(object):
             self.aes_iv2 = Random.new().read(self.AES_IV_SIZE)
 
         # Encrypt the configuration and add AES IV and hash
-        cipher = AES.new(self.aes_key2, self.__AES_MODE, self.aes_iv2)
+        cipher = AES.new(self.hmac_key2[:self.AES_KEY_SIZE], self.__AES_MODE, self.aes_iv2)
         config_enc = self.aes_iv2 + cipher.encrypt(config_dec) + config_hash
         del cipher
 
         # Encode the configuration
         config_s = encode_base64(config_enc)
 
-        # Encode and quote the configuration AES key
-        config_key_s = encode_base64(self.aes_key2).replace('=','%3d')
+        # Encode and quote the configuration HMAC key
+        config_key_s = encode_base64(self.hmac_key2).replace('=','%3d')
 
         # Build the dictionary string
-        dict_dec = 'type=key:cipher=AES-256:key={}'.format(config_key_s)
+        dict_dec = 'type=key:cipher=XTS-AES-256:key={}'.format(config_key_s)
 
         # Create the password salt if not already set
         if self.salt is None:
@@ -666,10 +667,10 @@ class VMwareVMX(object):
 
         # Create the dictionary AES Key with PBKDF2-HMAC-SHA-1
         dict_key = hashlib.pbkdf2_hmac('sha1', password_s.encode(), self.salt,
-                                       hash_rounds, self.AES_KEY_SIZE)
+                                       hash_rounds, 2 * self.AES_KEY_SIZE)
 
         # Check if the result is an AES-256 key
-        if len(dict_key) != self.AES_KEY_SIZE:
+        if len(dict_key) != 2 * self.AES_KEY_SIZE:
             msg = 'Dictionary AES key has incorrect length: {}'.format(len(dict_key))
             raise ValueError(msg)
 
@@ -686,7 +687,7 @@ class VMwareVMX(object):
             self.aes_iv1 = Random.new().read(self.AES_IV_SIZE)
 
         # Encrypt the dictionary and add AES IV and hash
-        cipher = AES.new(dict_key, self.__AES_MODE, self.aes_iv1)
+        cipher = AES.new(dict_key[:self.AES_KEY_SIZE], self.__AES_MODE, self.aes_iv1)
         dict_enc = self.aes_iv1 + cipher.encrypt(dict_dec) + dict_hash
         del cipher
 
@@ -702,7 +703,7 @@ class VMwareVMX(object):
 
         # Build the dictionary string
         dict_s = 'pass2key={}:cipher={}:rounds={}:salt={},{},{}' \
-                 .format('PBKDF2-HMAC-SHA-1', 'AES-256', hash_rounds,
+                 .format('PBKDF2-HMAC-SHA-1', 'XTS-AES-256', hash_rounds,
                          salt_s, 'HMAC-SHA-1', dict_s)
 
         # Quote the dictionary string
