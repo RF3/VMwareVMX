@@ -4,7 +4,7 @@
 #  main.py
 #
 
-version = '1.0.5'
+version = '1.0.6'
 
 import getopt
 from getpass import getpass
@@ -42,7 +42,6 @@ def main(argv):
     add = False
     addfilename = None
     changepassword = False
-    config = None
     decrypt = False
     displayname = None
     encrypt = False
@@ -58,13 +57,13 @@ def main(argv):
     removefilename = None
     options = [
                ('a', 'add',         'file',
-                'decrypt, add line(s) from file and encrypt in_file'),
+                'add line(s) from file'),
                ('c', 'change',      '',
                 'change password'),
                ('d', 'decrypt',     '',
                 'decrypt in_file (default)'),
                ('D', 'displayname', 'name',
-                'set the displayname for encrypted configuration'),
+                'set the displayname parameter'),
                ('e', 'encrypt',     '',
                 'encrypt in_file'),
                ('f', 'force',       '',
@@ -82,7 +81,7 @@ def main(argv):
                ('p', 'password',    'password',
                 'set the password (default: ask for it)'),
                ('r', 'remove',      'file',
-                'decrypt, remove line(s) found in file and encrypt in_file'),
+                'remove line(s) found in file'),
                ('v', 'version',     '',
                 'print the version string and exit'),
                ('x', 'hashrounds',  'value',
@@ -101,7 +100,7 @@ def main(argv):
     for (opt, arg) in opts:
         if opt in ('-a', '--add'):
             addfilename = arg
-            add, decrypt, encrypt = True, True, True
+            add = True
         elif opt in ('-c', '--change'):
             changepassword, decrypt, encrypt = True, True, True
         elif opt in ('-d', '--decrypt'):
@@ -109,7 +108,7 @@ def main(argv):
         elif opt in ('-D', '--displayname'):
             displayname = arg
         elif opt in ('-e', '--encrypt'):
-            encrypt = True
+            changepassword, encrypt = True, True
         elif opt in ('-f', '--force'):
             force = True
         elif opt in ('-g', '--guestos'):
@@ -127,7 +126,7 @@ def main(argv):
             password = arg
         elif opt in ('-r', '--remove'):
             removefilename = arg
-            remove, decrypt, encrypt = True, True, True
+            remove = True
         elif opt in ('-v', '--version'):
             print('VMwareVMX Crypto Tool v{v}\n' \
                   'Copyright (C) 2018-2023 Robert Federle'.format(v=version))
@@ -145,9 +144,6 @@ def main(argv):
     if len(args) == 0:
         sys.exit('Error: No input file given')
 
-    if decrypt is False and encrypt is False:
-        decrypt = True
-
     # Read the configuration file
     infilename = args[0]
     if len(args) == 2:
@@ -157,97 +153,110 @@ def main(argv):
     elif len(args) > 2:
         sys.exit('Error: More arguments after filenames found')
 
-    if password is None:
-        password = getpassword('Password:')
-
-    if password == '':
-        sys.exit('Error: Empty password not allowed')
-
     try:
-        with open(infilename, "r") as infile:
-            lines = infile.readlines()
+        lines = open(infilename, "r").read().split('\n')
     except (OSError, IOError) as err:
         sys.exit('Error: Cannot read from file ' + infilename + ": " +  str(err))
 
-    VMX = VMwareVMX.new()
+    # Analyze the file and replace all header entries with the ones from the command-line
+    encoding = 'utf-8'
+    headerlist = []
+    configlist = []
+    keysafe, data = None, None
+    counter = 0
+    for line in lines:
+        if line == '':
+            continue
+        match = re.match('^.encoding *= *"(.+)"$', line)
+        if match:
+            encoding = match.group(1).lower()
+            headerlist.append(line)
+            continue
+        if re.match('^display[Nn]ame *= *"(.+)"$', line):
+            if displayname:
+                # Replace with new parameter
+               line = 'displayName = "{}"'.format(displayname)
+            headerlist.append(line)
+            continue
+        if re.match('^guestOS.detailed.data *= *"(.+)"$', line):
+            if guestOSdetaileddata:
+                # Replace with new parameter
+                line = 'guestOS.detailed.data = "{}"'.format(guestOSdetaileddata)
+            headerlist.append(line)
+            continue
+        if re.match('^guestInfo.detailed.data *= *"(.+)"$', line):
+            if guestInfodetaileddata:
+                # Replace with new parameter
+                line = 'guestInfo.detailed.data = "{}"'.format(guestInfodetaileddata)
+            headerlist.append(line)
+            continue
+        if re.match('^encryption.keySafe *= *"vmware:key/list/\(pair/\(phrase/(.+)pass2key(.+)\)\)"$', line):
+            keysafe = line
+            continue
+        if re.match('^encryption.data *= *"(.+)"$', line):
+            data = line
+            continue
+        configlist.append(line)
+
+    if (decrypt == False) and (keysafe and data):
+        # If we add or remove lines from an encrypted file, make sure the result is also encrypted
+        if add or remove:
+            decrypt, encrypt = True, True
+
+        # Default operation is decrypting but only if the file isn't already decrypted
+        if encrypt == False:
+            decrypt = True
+
+    vmx = VMwareVMX.new()
 
     # Decrypt the configuration
     if decrypt:
-        keysafe = None
-        data = None
+        if keysafe is None or data is None:
+            sys.exit('Error: File ' + infilename + ' is not a valid VMX file or already decrypted')
 
-        for line in lines:
-            if displayname is None:
-                match = re.match('display[Nn]ame *= *"(.+)"\n', line)
-                if match:
-                    displayname = match.group(1)
-            if guestOSdetaileddata is None:
-                match = re.match('guestOS.detailed.data *= *"(.+)"\n', line)
-                if match:
-                    guestOSdetaileddata = match.group(1)
-            if guestInfodetaileddata is None:
-                match = re.match('guestInfo.detailed.data *= *"(.+)"\n', line)
-                if match:
-                    guestInfodetaileddata = match.group(1)
-            if 'encryption.keySafe' in line:
-                keysafe = line
-            if 'encryption.data' in line:
-                data = line
-            elif '.encoding' in line:
-                match = re.match('.encoding *= *"(.+)"\n', line)
-                if match:
-                    encoding = match.group(1).lower()
+        if password is None:
+            password = getpassword('Password:')
 
-        if displayname is None or keysafe is None or data is None:
-            sys.exit('Error: File ' + infilename + ' is not a valid VMX file')
+        if password == '':
+            sys.exit('Error: Empty password is not allowed')
 
         try:
-            config = VMX.decrypt(password, keysafe, data, encoding, ignore)
+            config = vmx.decrypt(password, keysafe, data, encoding, ignore)
         except ValueError as err:
             sys.exit('Error: ' + str(err))
 
         if config is None:
             sys.exit('Error: Password is invalid')
+        else:
+            keysafe, data = None, None
+            configlist = config.split('\n')
 
     # Remove lines from the configuration
     if remove:
         try:
-            removelist = open(removefilename, "r").read().split('\n')
+            removelist = open(removefilename, "r", encoding=encoding).read().split('\n')
         except (OSError, IOError) as err:
             sys.exit('Error: Cannot read from file ' + removefilename + ": " +  str(err))
-
-        lines = config.split('\n')
-        config = '\n'.join([x for x in lines if x not in removelist]) + '\n'
+        configlist = [x for x in configlist if x not in removelist]
 
     # Add lines to the configuration
     if add:
         try:
-            addconfig = open(addfilename, "r", encoding="utf8").read()
+            addlist = open(addfilename, "r", encoding=encoding).read().split('\n')
+                # Remove the newline character from each string
+ #               addlist = [x[:-1] for x in addlist]
         except (OSError, IOError) as err:
             sys.exit('Error: Cannot read from file ' + addfilename + ": " +  str(err))
-
-        config += addconfig
+        configlist.extend(addlist)
 
     # Use new parameters (hash_rounds, identifier, salt, AES IV, AES keys) for encryption?
     if new:
-        VMX.reinit()
+        vmx.reinit()
 
     # Encrypt the configuration
     if encrypt:
-        if displayname is None:
-            sys.exit('Error: Displayname is missing')
-
-        if guestOSdetaileddata is None:
-            guestOSdetaileddata = ""
-        else:
-            guestOSdetaileddata = 'guestOS.detailed.data = "{g}"\n' \
-                                  .format(g=guestOSdetaileddata)
-
-        if guestInfodetaileddata is None:
-            guestInfodetaileddata = ""
-        else:
-            guestInfodetaileddata = 'guestInfo.detailed.data = "{i}"\n' \
-                                    .format(i=guestInfodetaileddata)
+        if keysafe and data:
+            sys.exit('Error: VMX file is already encrypted')
 
         if changepassword:
             password = getpassword('New Password:')
@@ -257,20 +266,23 @@ def main(argv):
             if password != password2:
                 sys.exit("Error: Passwords don't match")
 
-        if config is None:
-            config = ''.join(lines)
-
         # Reuse old value for hash_rounds if not overriden 
         if hash_rounds is None:
-            hash_rounds = VMX.hash_rounds
+            hash_rounds = vmx.hash_rounds
+
+        config = '\n'.join(configlist)
 
         try:
-            (keysafe, data) = VMX.encrypt(password, config, hash_rounds)
+            (keysafe, data) = vmx.encrypt(password, config, hash_rounds)
         except ValueError as err:
             sys.exit('Error: '+ str(err))
 
-        config = '.encoding = "UTF-8"\ndisplayName = "{n}"\n{g}{i}{k}\n{d}\n' \
-                 .format(n=displayname, g=guestOSdetaileddata, i=guestInfodetaileddata, k=keysafe, d=data)
+    # Create configuration
+    config = '\n'.join(headerlist) + '\n'
+    if keysafe and data:
+        config = config + keysafe + '\n' + data + '\n'
+    else:
+        config = config + '\n'.join(configlist) + '\n'
 
     # Write to the configuration file or to stdout
     if outfilename is None or outfilename == '-':
@@ -280,7 +292,7 @@ def main(argv):
             sys.exit('Error: File ' + outfilename + ' exists; ' \
                      'use --force to overwrite')
         try:
-            open(outfilename, "w").write(config)
+            open(outfilename, "w", encoding=encoding).write(config)
         except (OSError, IOError) as err:
             sys.exit('Error: Cannot write to file ' + outfilename + ": " +  str(err))
 

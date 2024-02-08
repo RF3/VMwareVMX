@@ -1,6 +1,6 @@
 ## VMwareVMX
 
-VMware VMX Crypto Module for Python 2 (deprecated) and 3
+VMware VMX Crypto Module for Python 3
 
 VMware VMX configuration files are encrypted when the virtual machine
 is encrypted, too. Making specific changes by hand to these files was
@@ -92,10 +92,16 @@ password is used for new.vmx.
 
 ### Changes
 
+1.0.6:
+ - Added support for new XTS-AES-256 algorithm introduced with VMware
+   Workstation 17.5 and VMware Fusion 13.5 (which is in fact not the real
+   XTS-AES algorithm). Thanks to mroi for most of the work.
+ - Python 2 support has been removed
+
 1.0.5:
  - New option -G (or --guestinfo) defines the guestInfo parameter.
- - Added public attribute "hash_rounds" with the number of hash rounds used for
-   the PBKDF2-HMAC-SHA-1 hashing algorithm.
+ - Added public attribute "hash_rounds" with the number of hash rounds used
+   for the PBKDF2-HMAC-SHA-1 hashing algorithm.
 
 1.0.4:
  - Fix: Added UTF-8 encoding on file encryption (thanks Knoxberg)
@@ -119,4 +125,4 @@ password is used for new.vmx.
 
 ### Author
 
-Written 2018-2022 by Robert Federle <r.federle3@gmx.de>
+Written 2018-2024 by Robert Federle <r.federle3@gmx.de>
