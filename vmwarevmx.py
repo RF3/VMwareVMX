@@ -18,7 +18,7 @@ the methods to decrypt and encrypt the configuration data.
 Public attributes:
 
     There are seven public attributes available which can be used to specify
-    certain parameters for the encryption process. After a successful
+    certain parameters for encrypting or decrypting. After a successful
     decryption, they contain the values of the current configuration. These
     attributes can be set to user-specified values or to None which means
     that a new random value should be automatically generated.
@@ -44,7 +44,7 @@ Public constants:
         The fixed size of the XTS-AES-256 Key in bytes
 """
 
-__version__ = '1.0.6'
+__version__ = '1.0.7'
 
 import hashlib
 import hmac
@@ -77,8 +77,20 @@ class VMwareVMX(object):
     # Private constants
     __AES_MODE = AES.MODE_CBC
     __HASH_SIZE = 20  # sha1
-    __DICT_AES_SIZE = AES_IV_SIZE + 48 + AES_KEY_SIZE + __HASH_SIZE
-    __DICT_XTS_SIZE = AES_IV_SIZE + 64 + XTS_KEY_SIZE + __HASH_SIZE
+    # AES-256 dictionary size: 116 bytes
+    # AES IV (16 bytes)
+    # String "type=key:cipher=AES-256:key=" (28 bytes)
+    # 256 bits AES key, also the HMAC key, BASE64 encoded and quoted (46 bytes)
+    # Padding bytes (6 bytes)
+    # SHA-1 hash (20 bytes)
+    __DICT_AES_SIZE = AES_IV_SIZE + 28 + (((AES_KEY_SIZE + 1) // 3 * 4) + 2) + 6 + __HASH_SIZE
+    # XTS-AES-256 dictionary size: 164 bytes
+    # AES IV (16 bytes)
+    # String "type=key:cipher=XTS-AES-256:key=" (32 bytes)
+    # 256 bits AES/HMAC key + additional 256 bits for the HMAC key, BASE64 encoded and quoted (92 bytes)
+    # Padding bytes (4 bytes)
+    # SHA-1 hash (20 bytes)
+    __DICT_XTS_SIZE = AES_IV_SIZE + 32 + 2 * (((AES_KEY_SIZE + 1) // 3 * 4) + 2) + 4 + __HASH_SIZE
 
     def __init__(self):
         """Initialize the public attributes
@@ -140,10 +152,11 @@ class VMwareVMX(object):
             raise TypeError(msg)
 
     """cipher(string):
-        Contains the cipher used for encryption of the configuration.
+        Contains the cipher used for encrypting/decrypting the configuration.
         It is either AES-256 or XTS-AES-256. Changing its value also
         initializes the internal variables __dict_size (dictionary size)
-        and __aes_key_size (AES key size).
+        and __config_key_size (AES/HMAC key size) and sets the public
+        attribute config_key (AES/HMAC key) to None.
     """
     @property
     def cipher(self):
@@ -152,12 +165,16 @@ class VMwareVMX(object):
     @cipher.setter
     def cipher(self, value):
         self.__cipher = self.__check_attr(value, 0, 'cipher')
+        if value == None:
+            value = "AES-256"
         if value == "AES-256":
             self.__dict_size = self.__DICT_AES_SIZE
-            self.__aes_key_size = self.AES_KEY_SIZE
+            self.__config_key_size = self.AES_KEY_SIZE
+            self.config_key = None
         elif value == "XTS-AES-256":
             self.__dict_size = self.__DICT_XTS_SIZE
-            self.__aes_key_size = self.XTS_KEY_SIZE
+            self.__config_key_size = self.XTS_KEY_SIZE
+            self.config_key = None
         else:
             msg = 'Unsupported configuration encryption algorithm: ' + value
             raise ValueError(msg)
@@ -221,7 +238,7 @@ class VMwareVMX(object):
     """dict_aes_iv(bytes):
         Contains the first AES IV after a successful decryption.
         These 16 random bytes are used as the Initialization Vector to decrypt
-        the dictionary which contains the second AES Key, which is then used
+        the dictionary which contains the second AES/HMAC key, which is then used
         to decrypt the configuration itself.
 
         If the value is None, the first AES IV will be created with random
@@ -240,7 +257,7 @@ class VMwareVMX(object):
     """config_aes_iv(bytes):
         Contains the second AES IV after a successful decryption.
         These 16 random bytes are used as the Initialization Vector to
-        decrypt the configuration with the second AES Key which is retrieved
+        decrypt the configuration with the second AES/HMAC key which is retrieved
         from the dictionary.
 
         If the value is None, the second AES IV will be created with random
@@ -257,14 +274,14 @@ class VMwareVMX(object):
         self.__config_aes_iv = self.__check_attr(value, self.AES_IV_SIZE, 'config_aes_iv')
 
     """config_key(bytes):
-        Contains the second AES Key after a successful decryption.
+        Contains the second AES/HMAC Key after a successful decryption.
         This is either a 32 bytes (cipher AES-256) or 64 bytes key (cipher
         XTS-AES-256). The first 32 bytes (256 bits) are used as an AES-256 key
         to decrypt the configuration together with the second AES IV. If the
-        cipher is XTS-AES-256, the second 32 bytes are used for the HMAC
-        algorithm.
+        cipher is XTS-AES-256, the second 32 bytes are used with the first 32
+        bytes as a key for the HMAC algorithm.
 
-        If the value is None, the second AES Key will be created with random
+        If the value is None, the second AES/HMAC Key will be created with random
         data on encryption. If the size of the value isn't right, an exception
         of type ValueError will be the result. If it's not of type bytes, an
         exception of type TypeError will be the result.
@@ -275,7 +292,7 @@ class VMwareVMX(object):
 
     @config_key.setter
     def config_key(self, value):
-        self.__config_key = self.__check_attr(value, self.__aes_key_size, 'config_key')
+        self.__config_key = self.__check_attr(value, self.__config_key_size, 'config_key')
 
 
     #--------------------------------------------------------------------------
@@ -396,7 +413,8 @@ class VMwareVMX(object):
         dict_cipher_s = match.group(3)
 
         # Store the encryption algorithm. This automatically checks for supported algorithms
-        # and initializes the internal variables __dict_size and __aes_key_size accordingly.
+        # and initializes the internal variables __dict_size and __config_key_size accordingly.
+        # It also sets the public attribute config_key to None.
         self.cipher = dict_cipher_s
 
         # Get and check the number of hash rounds for validity
@@ -427,13 +445,13 @@ class VMwareVMX(object):
             msg = 'Dictionary has incorrect length: {}'.format(len(dict_enc))
             raise ValueError(msg)
 
-        # Create the dictionary AES Key with PBKDF2-HMAC-SHA-1
+        # Create the dictionary AES/HMAC Key with PBKDF2-HMAC-SHA-1
         dict_key = hashlib.pbkdf2_hmac('sha1', password_s.encode(), self.salt,
-                                       self.hash_rounds, self.__aes_key_size)
+                                       self.hash_rounds, self.__config_key_size)
 
-        # Check if the result is an AES-256 key
-        if len(dict_key) != self.__aes_key_size:
-            msg = 'Dictionary AES key has incorrect length: {}'.format(len(dict_key))
+        # Check if the result has the correct length for the given cipher
+        if len(dict_key) != self.__config_key_size:
+            msg = 'Dictionary AES/HMAC key has incorrect length: {}'.format(len(dict_key))
             raise ValueError(msg)
 
         # Get the AES IV and decrypt the dictionary (skip AES IV and hash)
@@ -490,11 +508,11 @@ class VMwareVMX(object):
             msg = 'Unsupported configuration encryption algorithm: ' + config_cipher_s
             raise ValueError(msg)
 
-        # Get quoted configuration AES key, unquote and decode it
+        # Get quoted configuration AES/HMAC key, unquote and decode it
         config_key_s = unquote(match.group(3))
         self.config_key = decode_base64(config_key_s)
         if self.config_key is None:
-            msg = 'Configuration AES key is not a valid BASE64 string:\n' + config_key_s
+            msg = 'Configuration AES/HMAC key is not a valid BASE64 string:\n' + config_key_s
             raise ValueError(msg)
 
         # Unquote, analyze and split the encryption.data line
@@ -597,7 +615,7 @@ class VMwareVMX(object):
         Raises:
             TypeError: if one of the public attributes has the wrong type.
             ValueError: if one of the public attributes or the dictionary
-                AES key has an incorrect length.
+                AES/HMAC key has an incorrect length.
         """
 
         def encode_base64(bytes):
@@ -637,9 +655,9 @@ class VMwareVMX(object):
         # Update the number of hash rounds
         self.hash_rounds = hash_rounds
 
-        # Create the configuration AES key if not already set
+        # Create the configuration AES/HMAC key if not already set
         if self.config_key is None:
-            self.config_key = Random.new().read(self.__aes_key_size)
+            self.config_key = Random.new().read(self.__config_key_size)
 
         # Calculate the configuration hash
         config_hash = hmac.HMAC(self.config_key, config_s.encode(), digestmod=hashlib.sha1).digest()
@@ -659,7 +677,7 @@ class VMwareVMX(object):
         # Encode the configuration
         config_s = encode_base64(config_enc)
 
-        # Encode and quote the configuration AES key
+        # Encode and quote the configuration AES/HMAC key
         config_key_s = encode_base64(self.config_key).replace('=','%3d')
 
         # Build the dictionary string
@@ -672,13 +690,13 @@ class VMwareVMX(object):
         # Encode and quote the password salt
         salt_s = quote_string(encode_base64(self.salt)).replace('%3d','%253d')
 
-        # Create the dictionary AES Key with PBKDF2-HMAC-SHA-1
+        # Create the dictionary AES/HMAC key with PBKDF2-HMAC-SHA-1
         dict_key = hashlib.pbkdf2_hmac('sha1', password_s.encode(), self.salt,
-                                       self.hash_rounds, self.__aes_key_size)
+                                       self.hash_rounds, self.__config_key_size)
 
-        # Check if the result is an AES-256 key
-        if len(dict_key) != self.__aes_key_size:
-            msg = 'Dictionary AES key has incorrect length: {}'.format(len(dict_key))
+        # Check if the result has the correct length for the given cipher
+        if len(dict_key) != self.__config_key_size:
+            msg = 'Dictionary AES/HMAC key has incorrect length: {}'.format(len(dict_key))
             raise ValueError(msg)
 
         # Calculate the dictionary hash

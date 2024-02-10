@@ -4,7 +4,7 @@
 #  main.py
 #
 
-version = '1.0.6'
+version = '1.0.7'
 
 import getopt
 from getpass import getpass
@@ -15,10 +15,13 @@ from vmwarevmx import VMwareVMX
 
 def getpassword(text):
     try:
-        password = getpass(text)
+        while True:
+            password = getpass(text)
+            if password != '':
+                return password
+            sys.stderr.write('Error: Empty password is not allowed. Try again.\n')
     except (EOFError, KeyboardInterrupt):
         sys.exit('\nError: Need a password')
-    return password
 
 def initgetopt(name, options, files=''):
     maxlen     =       max(len(long)
@@ -39,9 +42,9 @@ def initgetopt(name, options, files=''):
     return optshort, optlong, usage
 
 def main(argv):
-    add = False
     addfilename = None
     changepassword = False
+    cipher = None
     decrypt = False
     displayname = None
     encrypt = False
@@ -53,7 +56,6 @@ def main(argv):
     new = False
     outfilename = None
     password = None
-    remove = False
     removefilename = None
     options = [
                ('a', 'add',         'file',
@@ -77,7 +79,7 @@ def main(argv):
                ('i', 'ignore',      '',
                 'ignore some errors preventing decryption of a corrupted in_file'),
                ('n', 'new',         '',
-                'after decrypt, use new parameters for encrypt'),
+                'after decrypt, use new parameters for encryption'),
                ('p', 'password',    'password',
                 'set the password (default: ask for it)'),
                ('r', 'remove',      'file',
@@ -85,7 +87,11 @@ def main(argv):
                ('v', 'version',     '',
                 'print the version string and exit'),
                ('x', 'hashrounds',  'value',
-                'used for the number of hash rounds of the encryption key (default: 10,000)'),
+                'used for the number of hash rounds of the password (default: 10,000)'),
+               ('1', 'aes',         '',
+                'encrypt with old AES-256 algorithm'),
+               ('2', 'xts',         '',
+                'encrypt with new XTS-AES-256 algorithm'),
               ]
 
     (optshort, optlong, usage) = initgetopt(os.path.basename(argv[0]),
@@ -100,7 +106,6 @@ def main(argv):
     for (opt, arg) in opts:
         if opt in ('-a', '--add'):
             addfilename = arg
-            add = True
         elif opt in ('-c', '--change'):
             changepassword, decrypt, encrypt = True, True, True
         elif opt in ('-d', '--decrypt'):
@@ -108,7 +113,7 @@ def main(argv):
         elif opt in ('-D', '--displayname'):
             displayname = arg
         elif opt in ('-e', '--encrypt'):
-            changepassword, encrypt = True, True
+            encrypt = True
         elif opt in ('-f', '--force'):
             force = True
         elif opt in ('-g', '--guestos'):
@@ -126,10 +131,9 @@ def main(argv):
             password = arg
         elif opt in ('-r', '--remove'):
             removefilename = arg
-            remove = True
         elif opt in ('-v', '--version'):
             print('VMwareVMX Crypto Tool v{v}\n' \
-                  'Copyright (C) 2018-2023 Robert Federle'.format(v=version))
+                  'Copyright (C) 2018-2024 Robert Federle'.format(v=version))
             sys.exit(0)
         elif opt in ('-x', '--hashrounds'):
             try:
@@ -138,6 +142,10 @@ def main(argv):
                     sys.exit('Error: hashrounds value must be a positive non-zero number')
             except ValueError:
                 sys.exit('Error: hashrounds value must be a positive non-zero number')
+        elif opt in ('-1', '--aes'):
+            cipher = "AES-256"
+        elif opt in ('-2', '--xts'):
+            cipher = "XTS-AES-256"
         else:
             sys.exit(usage)
 
@@ -198,15 +206,15 @@ def main(argv):
             continue
         configlist.append(line)
 
+    # If the file is encrypted, enforce decryption, otherwise nothing useful can be done
     if (decrypt == False) and (keysafe and data):
-        # If we add or remove lines from an encrypted file, make sure the result is also encrypted
-        if add or remove:
-            decrypt, encrypt = True, True
+        decrypt = True
+        # If we add or remove lines from an encrypted file or a specific cipher is selected,
+        # make sure the result is also encrypted
+        if addfilename or removefilename or cipher:
+            encrypt = True
 
-        # Default operation is decrypting but only if the file isn't already decrypted
-        if encrypt == False:
-            decrypt = True
-
+    # Create VMwareVMX object
     vmx = VMwareVMX.new()
 
     # Decrypt the configuration
@@ -216,9 +224,6 @@ def main(argv):
 
         if password is None:
             password = getpassword('Password:')
-
-        if password == '':
-            sys.exit('Error: Empty password is not allowed')
 
         try:
             config = vmx.decrypt(password, keysafe, data, encoding, ignore)
@@ -232,7 +237,7 @@ def main(argv):
             configlist = config.split('\n')
 
     # Remove lines from the configuration
-    if remove:
+    if removefilename:
         try:
             removelist = open(removefilename, "r", encoding=encoding).read().split('\n')
         except (OSError, IOError) as err:
@@ -240,11 +245,9 @@ def main(argv):
         configlist = [x for x in configlist if x not in removelist]
 
     # Add lines to the configuration
-    if add:
+    if addfilename:
         try:
             addlist = open(addfilename, "r", encoding=encoding).read().split('\n')
-                # Remove the newline character from each string
- #               addlist = [x[:-1] for x in addlist]
         except (OSError, IOError) as err:
             sys.exit('Error: Cannot read from file ' + addfilename + ": " +  str(err))
         configlist.extend(addlist)
@@ -258,18 +261,18 @@ def main(argv):
         if keysafe and data:
             sys.exit('Error: VMX file is already encrypted')
 
-        if changepassword:
+        # If no password is given and password should be changed, ask for password
+        if changepassword or password is None:
             password = getpassword('New Password:')
-            if password == '':
-                sys.exit('Error: Empty password is not allowed')
             password2 = getpassword('New Password (again):')
             if password != password2:
                 sys.exit("Error: Passwords don't match")
 
-        # Reuse old value for hash_rounds if not overriden 
-        if hash_rounds is None:
-            hash_rounds = vmx.hash_rounds
+        # Change the cipher algorithm if requested
+        if cipher:
+            vmx.cipher = cipher
 
+        # Create configuration for encryption
         config = '\n'.join(configlist)
 
         try:
