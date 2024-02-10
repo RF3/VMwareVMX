@@ -52,6 +52,8 @@ example on how to use the VMwareVMX class.
       -r, --remove       decrypt, remove line(s) found in file and encrypt in_file
       -v, --version      print the version string and exit
       -x, --hashrounds   used for the number of hash rounds of the encryption key (default: 10,000)
+      -1, --aes          encrypt with old AES-256 algorithm
+      -2, --xts          encrypt with new XTS-AES-256 algorithm
 
 
 #### Decrypt an encrypted VMX config file:
@@ -91,6 +93,15 @@ then asks twice for the new password. If the new passwords match, the new
 password is used for new.vmx.
 
 ### Changes
+
+1.0.7:
+ - Fixed password bug in main.py (-p option didn't work anymore) which was
+   introduced with 1.0.6. Thanks to RomanKrylov for noticing me.
+ - Added two new options (-1, --aes and -2, --xts) for selecting the
+   encryption algorithm. This allows both upgrading and downgrading.
+ - Fixed an issue with the VMwareVMX class which forgot to reset the config
+   key used to encrypt the configuration when the encryption algorithm was
+   changed
 
 1.0.6:
  - Added support for new XTS-AES-256 algorithm introduced with VMware
