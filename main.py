@@ -175,33 +175,33 @@ def main(argv):
     for line in lines:
         if line == '':
             continue
-        match = re.match('^.encoding *= *"(.+)"$', line)
+        match = re.match(r'^.encoding *= *"(.+)"$', line)
         if match:
             encoding = match.group(1).lower()
             headerlist.append(line)
             continue
-        if re.match('^display[Nn]ame *= *"(.+)"$', line):
+        if re.match(r'^display[Nn]ame *= *"(.+)"$', line):
             if displayname:
                 # Replace with new parameter
                line = 'displayName = "{}"'.format(displayname)
             headerlist.append(line)
             continue
-        if re.match('^guestOS.detailed.data *= *"(.+)"$', line):
+        if re.match(r'^guestOS.detailed.data *= *"(.+)"$', line):
             if guestOSdetaileddata:
                 # Replace with new parameter
                 line = 'guestOS.detailed.data = "{}"'.format(guestOSdetaileddata)
             headerlist.append(line)
             continue
-        if re.match('^guestInfo.detailed.data *= *"(.+)"$', line):
+        if re.match(r'^guestInfo.detailed.data *= *"(.+)"$', line):
             if guestInfodetaileddata:
                 # Replace with new parameter
                 line = 'guestInfo.detailed.data = "{}"'.format(guestInfodetaileddata)
             headerlist.append(line)
             continue
-        if re.match('^encryption.keySafe *= *"vmware:key/list/\(pair/\(phrase/(.+)pass2key(.+)\)\)"$', line):
+        if re.match(r'^encryption.keySafe *= *"vmware:key/list/\(pair/\(phrase/(.+)pass2key(.+)\)\)"$', line):
             keysafe = line
             continue
-        if re.match('^encryption.data *= *"(.+)"$', line):
+        if re.match(r'^encryption.data *= *"(.+)"$', line):
             data = line
             continue
         configlist.append(line)
