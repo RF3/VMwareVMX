@@ -355,25 +355,25 @@ class VMwareVMX(object):
             ValueError: when the dictionary or configuration has invalid
                 values and can't be decoded.
         """
-        BASE64_RE  = '([a-zA-Z0-9\+/=]+)'
-        CIPHER_RE  = '([A-Z0-9\-]+)'
-        HASH_RE    = '([A-Z0-9\-]+)'
-        QUOTED_RE  = '([a-zA-Z0-9\+/%]+)'
-        ROUNDS_RE  = '([0-9]+)'
-        TYPE_RE    = '([a-z]+)'
+        BASE64_RE  = r'([a-zA-Z0-9\+/=]+)'
+        CIPHER_RE  = r'([A-Z0-9\-]+)'
+        HASH_RE    = r'([A-Z0-9\-]+)'
+        QUOTED_RE  = r'([a-zA-Z0-9\+/%]+)'
+        ROUNDS_RE  = r'([0-9]+)'
+        TYPE_RE    = r'([a-z]+)'
 
-        DATA_RE    = '.*\"' + BASE64_RE + '\"'
-        DATA2_RE   = '.*\"' + BASE64_RE
-        DICT_RE    = 'type=' + TYPE_RE \
-                   + ':cipher=' + CIPHER_RE \
-                   + ':key=' + QUOTED_RE
-        KEYSAFE_RE = '.+phrase/' + BASE64_RE \
-                   + '/pass2key=' + HASH_RE \
-                   + ':cipher=' + CIPHER_RE \
-                   + ':rounds=' + ROUNDS_RE \
-                   + ':salt=' + QUOTED_RE \
-                   + ',' + HASH_RE \
-                   + ',' + BASE64_RE + '\)'
+        DATA_RE    = r'.*\"' + BASE64_RE + r'\"'
+        DATA2_RE   = r'.*\"' + BASE64_RE
+        DICT_RE    = r'type=' + TYPE_RE \
+                   + r':cipher=' + CIPHER_RE \
+                   + r':key=' + QUOTED_RE
+        KEYSAFE_RE = r'.+phrase/' + BASE64_RE \
+                   + r'/pass2key=' + HASH_RE \
+                   + r':cipher=' + CIPHER_RE \
+                   + r':rounds=' + ROUNDS_RE \
+                   + r':salt=' + QUOTED_RE \
+                   + r',' + HASH_RE \
+                   + r',' + BASE64_RE + r'\)'
 
         def decode_base64(string):
             """Decode a BASE64 string
