@@ -1,6 +1,6 @@
 ## VMwareVMX
 
-VMware VMX Crypto Module for Python 3
+VMware VMX Crypto Module for Python
 
 VMware VMX configuration files are encrypted when the virtual machine
 is encrypted, too. Making specific changes by hand to these files was
@@ -93,6 +93,23 @@ then asks twice for the new password. If the new passwords match, the new
 password is used for new.vmx.
 
 ### Changes
+
+1.0.8:
+ - Several strings were transfered into raw strings to avoid 'invalid
+   escape sequence' warnings with Python 3.12+. Thanks to clouetb for the
+   pull request to fix this.
+ - Converting a XTS-AES-256 key into AES-256 is now supported by reusing
+   the first 256 bits of the key.
+ - Converting an AES-256 key into XTS-AES-256 reuses the existing key by
+   adding 256 random bits for the longer 512 bit HMAC key.
+ - First release of VMXEditor which is a simple text editor using the
+   VMwareVMX module. Now you can open a VMX file, decrypt it, modify it,
+   encrypt it again with the same password (or a different one) and save
+   it. It even comes with undo/redo and a simple search function, but no
+   search-and-replace. Cut, copy and paste is supported, so if you need
+   to replace some text, just use a normal editor for that. The whole
+   editor should be pretty self-explanatory, I hope, and it should run on
+   any operating system supporting python.
 
 1.0.7:
  - Fixed password bug in main.py (-p option didn't work anymore) which was

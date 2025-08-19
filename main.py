@@ -4,7 +4,7 @@
 #  main.py
 #
 
-version = '1.0.7'
+version = '1.0.8'
 
 import getopt
 from getpass import getpass

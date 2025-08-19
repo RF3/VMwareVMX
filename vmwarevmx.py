@@ -44,7 +44,7 @@ Public constants:
         The fixed size of the XTS-AES-256 Key in bytes
 """
 
-__version__ = '1.0.7'
+__version__ = '1.0.8'
 
 import hashlib
 import hmac
@@ -155,8 +155,8 @@ class VMwareVMX(object):
         Contains the cipher used for encrypting/decrypting the configuration.
         It is either AES-256 or XTS-AES-256. Changing its value also
         initializes the internal variables __dict_size (dictionary size)
-        and __config_key_size (AES/HMAC key size) and sets the public
-        attribute config_key (AES/HMAC key) to None.
+        and __config_key_size (AES/HMAC key size). The AES key for encrypting
+        is converted between the two key formats, if possible.
     """
     @property
     def cipher(self):
@@ -170,11 +170,15 @@ class VMwareVMX(object):
         if value == "AES-256":
             self.__dict_size = self.__DICT_AES_SIZE
             self.__config_key_size = self.AES_KEY_SIZE
-            self.config_key = None
+            # Keep the first 256 bits of an existing AES key
+            if hasattr(self, "config_key") and self.config_key != None:
+                self.config_key = self.config_key[:self.AES_KEY_SIZE]
         elif value == "XTS-AES-256":
             self.__dict_size = self.__DICT_XTS_SIZE
             self.__config_key_size = self.XTS_KEY_SIZE
-            self.config_key = None
+            # If an existing key has only 256 bits, we add 256 random bits for the longer HMAC key
+            if hasattr(self, "config_key") and self.config_key != None and len(self.config_key) != self.XTS_KEY_SIZE:
+                self.config_key = self.config_key + Random.new().read(self.AES_KEY_SIZE)
         else:
             msg = 'Unsupported configuration encryption algorithm: ' + value
             raise ValueError(msg)
@@ -293,7 +297,6 @@ class VMwareVMX(object):
     @config_key.setter
     def config_key(self, value):
         self.__config_key = self.__check_attr(value, self.__config_key_size, 'config_key')
-
 
     #--------------------------------------------------------------------------
 
